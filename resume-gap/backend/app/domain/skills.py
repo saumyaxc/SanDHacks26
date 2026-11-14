@@ -1,13 +1,15 @@
-"""Skill normalization. Cross-JD aggregation groups by the canonical name,
-so every alias of a skill must map to exactly one canonical string.
+"""Skill normalization. Cross-JD aggregation groups by the canonical name.
 
-Rules:
-- Keys are already-normalized (lowercase, single spaces).
-- Values are canonical names and must NOT themselves be keys that map elsewhere.
-- Unknown skills pass through as their normalized form.
-- Ambiguous abbreviations (e.g. "tf" = terraform or tensorflow) are deliberately omitted.
+How a canonical name is produced:
+1. The LLM proposes a standard name, reusing one from the known-skills list when it fits.
+2. normalize_skill() cleans formatting (case, hyphens, punctuation, whitespace).
+3. ALIASES overrides the result for abbreviations the LLM may leave as-is.
 
-Tech-focused for now; the cross-field section is a small seed, not full coverage.
+ALIASES is a small safety net, not the main mechanism — don't grow it per JD.
+
+Invariants (tested in tests/test_skills.py):
+- normalize_skill(v) == v for every alias value (canonical names are stable).
+- Ambiguous abbreviations (e.g. "tf" = terraform or tensorflow) are omitted.
 """
 
 import re
@@ -60,8 +62,15 @@ ALIASES: dict[str, str] = {
     "nlp": "natural language processing",
     "llm": "large language models",
     "llms": "large language models",
-    "oop": "object-oriented programming",
+    "ai": "artificial intelligence",
+    "oop": "object oriented programming",
     "dsa": "data structures and algorithms",
+    "data structures": "data structures and algorithms",
+    "algorithms": "data structures and algorithms",
+    # Soft skills
+    "written communication": "communication",
+    "verbal communication": "communication",
+    "written and verbal communication": "communication",
     # Cross-field seed
     "ms excel": "excel",
     "microsoft excel": "excel",
@@ -74,6 +83,12 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 def normalize_skill(raw: str) -> str:
-    """'  K8s ' -> 'kubernetes'; 'Rust' -> 'rust'."""
-    key = _WHITESPACE.sub(" ", raw.strip().lower()).strip(" .,;:")
+    """'  K8s ' -> 'kubernetes'; 'Problem-Solving' -> 'problem solving'; 'Rust' -> 'rust'."""
+    key = raw.strip().lower().replace("-", " ")
+    key = _WHITESPACE.sub(" ", key).strip(" .,;:")
     return ALIASES.get(key, key)
+
+
+def known_canonical_skills() -> set[str]:
+    """Seed vocabulary shown to the LLM so it reuses existing canonical names."""
+    return set(ALIASES.values())

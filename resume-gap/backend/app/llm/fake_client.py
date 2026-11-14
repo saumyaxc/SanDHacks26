@@ -20,6 +20,7 @@ DEFAULT_RESPONSES: dict[str, str] = {
                 {
                     "id": "req-1",
                     "skill": "Python",
+                    "canonical_skill": "python",
                     "category": "technical_skill",
                     "priority": "required",
                     "years_required": 3,
@@ -28,6 +29,7 @@ DEFAULT_RESPONSES: dict[str, str] = {
                 {
                     "id": "req-2",
                     "skill": "K8s",
+                    "canonical_skill": "kubernetes",
                     "category": "tool",
                     "priority": "required",
                     "years_required": None,
@@ -36,6 +38,7 @@ DEFAULT_RESPONSES: dict[str, str] = {
                 {
                     "id": "req-3",
                     "skill": "AWS",
+                    "canonical_skill": "aws",
                     "category": "tool",
                     "priority": "preferred",
                     "years_required": None,
@@ -44,6 +47,7 @@ DEFAULT_RESPONSES: dict[str, str] = {
                 {
                     "id": "req-4",
                     "skill": "PostgreSQL",
+                    "canonical_skill": "postgresql",
                     "category": "tool",
                     "priority": "required",
                     "years_required": None,
@@ -52,6 +56,7 @@ DEFAULT_RESPONSES: dict[str, str] = {
                 {
                     "id": "req-5",
                     "skill": "communication",
+                    "canonical_skill": "communication",
                     "category": "soft_skill",
                     "priority": "preferred",
                     "years_required": None,

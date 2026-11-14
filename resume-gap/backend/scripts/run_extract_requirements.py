@@ -68,11 +68,12 @@ def main() -> None:
         for r in result.requirements:
             pri = "REQ " if r.priority == "required" else "pref"
             years = f" ({r.years_required}y)" if r.years_required else ""
+            group = f" [{r.any_of_group}]" if r.any_of_group else ""
             flag = "  ! quote not in JD" if r in bad_quotes else ""
-            print(f"  {r.id:<7}{pri} {r.category:<17}{r.skill!r} -> {r.canonical_skill!r}{years}{flag}")
+            print(f"  {r.id:<7}{pri} {r.category:<17}{r.skill!r} -> {r.canonical_skill!r}{group}{years}{flag}")
         for r in bad_quotes:
             print(f"\n  ! {r.id} quote: {r.jd_quote!r}")
-        print(f"\n  not in alias dict: {', '.join(passthrough) or '-'}\n")
+        print(f"\n  new canonical names (not in seed vocabulary): {', '.join(passthrough) or '-'}\n")
 
 
 if __name__ == "__main__":

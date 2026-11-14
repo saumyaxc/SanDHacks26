@@ -31,20 +31,25 @@ def _check_unique_ids(ids: list[str], what: str) -> None:
 
 class ExtractRequirementsInput(_Base):
     jd_text: str = Field(min_length=1, max_length=MAX_INPUT_CHARS)
+    # Canonical skills seen in earlier analyses; shown to the LLM so it reuses them.
+    known_skills: list[str] = Field(default_factory=list)
 
 
 class Requirement(_Base):
     id: str  # e.g. "req-1"
     skill: str  # short skill name as written in the JD, e.g. "K8s"
+    canonical_skill: str  # LLM-proposed standard name; always re-normalized below
     category: SkillCategory
     priority: Priority
     years_required: int | None = None
+    # Shared label for "one of X, Y, Z" options; any one member satisfies the group.
+    any_of_group: str | None = None
     jd_quote: str  # the JD line this came from
 
-    @computed_field
-    @property
-    def canonical_skill(self) -> str:
-        return normalize_skill(self.skill)
+    @model_validator(mode="after")
+    def _normalize_canonical(self) -> "Requirement":
+        self.canonical_skill = normalize_skill(self.canonical_skill or self.skill)
+        return self
 
 
 class RequirementsExtraction(_Base):
