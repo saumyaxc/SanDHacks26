@@ -92,3 +92,8 @@ def normalize_skill(raw: str) -> str:
 def known_canonical_skills() -> set[str]:
     """Seed vocabulary shown to the LLM so it reuses existing canonical names."""
     return set(ALIASES.values())
+
+
+def skill_vocabulary(extra: list[str]) -> list[str]:
+    """Seed vocabulary plus caller-supplied skills (e.g. from past analyses), normalized and sorted."""
+    return sorted(known_canonical_skills() | {normalize_skill(s) for s in extra if s.strip()})

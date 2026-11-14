@@ -7,11 +7,11 @@ Put JDs in tests/fixtures/jds/*.txt, then from backend/:
 
 import argparse
 import logging
-import re
 import time
 from pathlib import Path
 
 from app.config import get_settings
+from app.domain.quotes import quote_in_text
 from app.domain.schemas import ExtractRequirementsInput
 from app.domain.skills import ALIASES
 from app.llm.base import LLMError
@@ -20,11 +20,6 @@ from app.pipeline.extract_requirements import extract_requirements
 
 JD_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "jds"
 _KNOWN_CANONICAL = set(ALIASES.values())
-
-
-def _norm(text: str) -> str:
-    # Ignore bullets, dashes, and whitespace differences when checking quotes.
-    return re.sub(r"[\s•·*\-–—]+", " ", text).strip().lower()
 
 
 def main() -> None:
@@ -55,8 +50,7 @@ def main() -> None:
             continue
         elapsed = time.perf_counter() - start
 
-        jd_norm = _norm(jd_text)
-        bad_quotes = [r for r in result.requirements if _norm(r.jd_quote) not in jd_norm]
+        bad_quotes = [r for r in result.requirements if not quote_in_text(r.jd_quote, jd_text)]
         passthrough = sorted(
             {r.canonical_skill for r in result.requirements if r.canonical_skill not in _KNOWN_CANONICAL}
         )

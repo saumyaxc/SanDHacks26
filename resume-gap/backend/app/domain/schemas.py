@@ -8,7 +8,7 @@ triggers the client's retry.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .enums import Bucket, Priority, ResourceType, ResumeSection, SkillCategory
 from .skills import normalize_skill
@@ -72,18 +72,25 @@ class RequirementsExtraction(_Base):
 
 class ExtractEvidenceInput(_Base):
     resume_text: str = Field(min_length=1, max_length=MAX_INPUT_CHARS)
+    # Canonical skills seen in earlier analyses; shown to the LLM so it reuses them.
+    known_skills: list[str] = Field(default_factory=list)
+
+
+class SkillMention(_Base):
+    skill: str  # as written in the resume
+    canonical_skill: str  # LLM-proposed standard name; always re-normalized below
+
+    @model_validator(mode="after")
+    def _normalize_canonical(self) -> "SkillMention":
+        self.canonical_skill = normalize_skill(self.canonical_skill or self.skill)
+        return self
 
 
 class EvidenceItem(_Base):
     id: str  # e.g. "ev-1"
     section: ResumeSection
-    line: str  # exact resume line, verbatim
-    skills: list[str]  # skills this line demonstrates, as written
-
-    @computed_field
-    @property
-    def canonical_skills(self) -> list[str]:
-        return [normalize_skill(s) for s in self.skills]
+    line: str  # exact resume line, verbatim (checked in pipeline/extract_evidence.py)
+    skills: list[SkillMention]  # skills this line explicitly names
 
 
 class EvidenceExtraction(_Base):

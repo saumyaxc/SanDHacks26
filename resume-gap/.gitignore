@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Real resumes contain personal info; never commit them
+backend/tests/fixtures/resumes/
+
 # Python
 .venv/
 __pycache__/

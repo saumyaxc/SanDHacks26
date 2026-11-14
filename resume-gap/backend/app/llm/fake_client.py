@@ -72,25 +72,37 @@ DEFAULT_RESPONSES: dict[str, str] = {
                     "id": "ev-1",
                     "section": "experience",
                     "line": "Built REST APIs in Python and FastAPI serving 10k daily users",
-                    "skills": ["Python", "FastAPI", "REST APIs"],
+                    "skills": [
+                        {"skill": "Python", "canonical_skill": "python"},
+                        {"skill": "FastAPI", "canonical_skill": "fastapi"},
+                        {"skill": "REST APIs", "canonical_skill": "rest"},
+                    ],
                 },
                 {
                     "id": "ev-2",
                     "section": "experience",
                     "line": "Deployed services to Google Cloud Run with Docker",
-                    "skills": ["GCP", "Docker"],
+                    "skills": [
+                        {"skill": "Google Cloud Run", "canonical_skill": "gcp"},
+                        {"skill": "Docker", "canonical_skill": "docker"},
+                    ],
                 },
                 {
                     "id": "ev-3",
                     "section": "skills",
                     "line": "Skills: Python, Postgres, Docker, Git",
-                    "skills": ["Python", "Postgres", "Docker", "Git"],
+                    "skills": [
+                        {"skill": "Python", "canonical_skill": "python"},
+                        {"skill": "Postgres", "canonical_skill": "postgresql"},
+                        {"skill": "Docker", "canonical_skill": "docker"},
+                        {"skill": "Git", "canonical_skill": "git"},
+                    ],
                 },
                 {
                     "id": "ev-4",
                     "section": "experience",
                     "line": "Presented quarterly project results to a 40-person engineering org",
-                    "skills": ["communication"],
+                    "skills": [{"skill": "Presented", "canonical_skill": "communication"}],
                 },
             ]
         }

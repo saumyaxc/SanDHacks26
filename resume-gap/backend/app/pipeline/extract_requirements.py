@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.domain.enums import Priority
 from app.domain.schemas import ExtractRequirementsInput, Requirement, RequirementsExtraction
-from app.domain.skills import known_canonical_skills, normalize_skill
+from app.domain.skills import skill_vocabulary
 from app.llm.base import LLMClient
 
 _PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "extract_requirements.md").read_text(
@@ -14,10 +14,11 @@ _PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "extract_requiremen
 
 
 def extract_requirements(data: ExtractRequirementsInput, llm: LLMClient) -> RequirementsExtraction:
-    known = sorted(known_canonical_skills() | {normalize_skill(s) for s in data.known_skills})
     # str.replace, not .format: JDs can contain literal braces. JD goes last so its
     # text is never scanned for placeholders.
-    prompt = _PROMPT.replace("{{KNOWN_SKILLS}}", ", ".join(known)).replace("{{JD_TEXT}}", data.jd_text)
+    prompt = _PROMPT.replace("{{KNOWN_SKILLS}}", ", ".join(skill_vocabulary(data.known_skills))).replace(
+        "{{JD_TEXT}}", data.jd_text
+    )
     raw = llm.complete_json(prompt, RequirementsExtraction)
     return _clean(raw)
 

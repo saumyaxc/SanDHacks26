@@ -3,8 +3,15 @@ import json
 import pytest
 
 from app.domain.enums import Priority
-from app.domain.schemas import ExtractRequirementsInput, RequirementsExtraction
-from app.llm.fake_client import FakeLLMClient
+from app.domain.quotes import quote_in_text
+from app.domain.schemas import (
+    EvidenceExtraction,
+    ExtractEvidenceInput,
+    ExtractRequirementsInput,
+    RequirementsExtraction,
+)
+from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
+from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 
 
@@ -128,3 +135,101 @@ def test_default_fake_responses():
 def test_rejects_empty_jd():
     with pytest.raises(ValueError):
         ExtractRequirementsInput(jd_text="   ")
+
+
+# ---------- quotes ----------
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Built REST APIs in Python",  # exact
+        "• built rest apis in python",  # bullet + case
+        "Built REST\n   APIs in Python",  # PDF line wrap
+        "Built REST APIs in Python’s ecosystem",  # smart quote vs straight
+    ],
+)
+def test_quote_in_text_ignores_formatting_noise(quote):
+    resume = "Experience\n- Built REST APIs in Python's ecosystem for 3 teams"
+    assert quote_in_text(quote, resume)
+
+
+def test_quote_in_text_rejects_changed_words():
+    assert not quote_in_text("Built GraphQL APIs in Python", "Built REST APIs in Python")
+    assert not quote_in_text("   ", "anything")
+
+
+# ---------- Stage 2: extract evidence ----------
+
+
+def _ev(id: str, line: str, skills: list[tuple[str, str]] | None = None, section: str = "experience") -> dict:
+    return {
+        "id": id,
+        "section": section,
+        "line": line,
+        "skills": [{"skill": s, "canonical_skill": c} for s, c in (skills or [])],
+    }
+
+
+def _run_evidence(items: list[dict], resume: str) -> EvidenceExtraction:
+    llm = FakeLLMClient({"EvidenceExtraction": json.dumps({"items": items})})
+    return extract_evidence(ExtractEvidenceInput(resume_text=resume), llm)
+
+
+RESUME = """Jane Doe | jane@example.com
+EXPERIENCE
+• Built REST APIs in Python and FastAPI serving
+  10k daily users
+• Deployed services to Google Cloud Run
+SKILLS
+Python, Postgres, Docker
+"""
+
+
+def test_evidence_prompt_contains_resume_and_vocabulary():
+    resume = "My resume {x}"
+    llm = FakeLLMClient({"EvidenceExtraction": json.dumps({"items": [_ev("a", resume)]})})
+    extract_evidence(ExtractEvidenceInput(resume_text=resume, known_skills=["Snowflake"]), llm)
+    _, prompt = llm.calls[0]
+    assert "My resume {x}" in prompt
+    assert "snowflake" in prompt
+    assert "{{" not in prompt
+
+
+def test_evidence_drops_lines_not_in_resume_and_renumbers():
+    result = _run_evidence(
+        [
+            _ev("a", "Built REST APIs in Python and FastAPI serving 10k daily users", [("Python", "python")]),
+            _ev("b", "Led a team of 12 engineers on Kubernetes migration"),  # hallucinated
+            _ev("c", "Deployed services to Google Cloud Run", [("Google Cloud Run", "gcp")]),
+        ],
+        RESUME,
+    )
+    assert [(i.id, i.line) for i in result.items] == [
+        ("ev-1", "Built REST APIs in Python and FastAPI serving 10k daily users"),
+        ("ev-2", "Deployed services to Google Cloud Run"),
+    ]
+
+
+def test_evidence_dedupes_lines_and_skills():
+    result = _run_evidence(
+        [
+            _ev("a", "Python, Postgres, Docker", [("Postgres", "postgres"), ("PostgreSQL", "postgresql")], "skills"),
+            _ev("b", "• Python, Postgres, Docker", [("Python", "python")], "skills"),
+        ],
+        RESUME,
+    )
+    assert len(result.items) == 1
+    assert [s.canonical_skill for s in result.items[0].skills] == ["postgresql"]
+
+
+def test_evidence_fails_if_nothing_is_verbatim():
+    with pytest.raises(ValueError):
+        _run_evidence([_ev("a", "Invented line")], RESUME)
+
+
+def test_default_fake_evidence_lines_are_consistent_with_matches():
+    evidence = json.loads(DEFAULT_RESPONSES["EvidenceExtraction"])
+    resume = "\n".join(i["line"] for i in evidence["items"])
+    result = extract_evidence(ExtractEvidenceInput(resume_text=resume), FakeLLMClient())
+    assert len(result.items) == 4
