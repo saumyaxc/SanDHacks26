@@ -1,0 +1,193 @@
+"""Canned-response client for tests and keyless local dev.
+
+Responses are keyed by schema class name. A str value is returned every time;
+a list value is consumed in order (use it to simulate bad-then-good output).
+"""
+
+import json
+
+from pydantic import BaseModel
+
+from .base import LLMClient, LLMError
+
+# One self-consistent example: every bucket appears, and every quote is an exact evidence line.
+DEFAULT_RESPONSES: dict[str, str] = {
+    "RequirementsExtraction": json.dumps(
+        {
+            "role_title": "Backend Engineer",
+            "company": "Acme",
+            "requirements": [
+                {
+                    "id": "req-1",
+                    "skill": "Python",
+                    "category": "technical_skill",
+                    "priority": "required",
+                    "years_required": 3,
+                    "jd_quote": "3+ years of professional experience with Python",
+                },
+                {
+                    "id": "req-2",
+                    "skill": "K8s",
+                    "category": "tool",
+                    "priority": "required",
+                    "years_required": None,
+                    "jd_quote": "Experience deploying services on Kubernetes (K8s)",
+                },
+                {
+                    "id": "req-3",
+                    "skill": "AWS",
+                    "category": "tool",
+                    "priority": "preferred",
+                    "years_required": None,
+                    "jd_quote": "Familiarity with AWS is a plus",
+                },
+                {
+                    "id": "req-4",
+                    "skill": "PostgreSQL",
+                    "category": "tool",
+                    "priority": "required",
+                    "years_required": None,
+                    "jd_quote": "Strong SQL skills, ideally PostgreSQL",
+                },
+                {
+                    "id": "req-5",
+                    "skill": "communication",
+                    "category": "soft_skill",
+                    "priority": "preferred",
+                    "years_required": None,
+                    "jd_quote": "Clear written and verbal communication",
+                },
+            ],
+        }
+    ),
+    "EvidenceExtraction": json.dumps(
+        {
+            "items": [
+                {
+                    "id": "ev-1",
+                    "section": "experience",
+                    "line": "Built REST APIs in Python and FastAPI serving 10k daily users",
+                    "skills": ["Python", "FastAPI", "REST APIs"],
+                },
+                {
+                    "id": "ev-2",
+                    "section": "experience",
+                    "line": "Deployed services to Google Cloud Run with Docker",
+                    "skills": ["GCP", "Docker"],
+                },
+                {
+                    "id": "ev-3",
+                    "section": "skills",
+                    "line": "Skills: Python, Postgres, Docker, Git",
+                    "skills": ["Python", "Postgres", "Docker", "Git"],
+                },
+                {
+                    "id": "ev-4",
+                    "section": "experience",
+                    "line": "Presented quarterly project results to a 40-person engineering org",
+                    "skills": ["communication"],
+                },
+            ]
+        }
+    ),
+    "MatchResult": json.dumps(
+        {
+            "matches": [
+                {
+                    "requirement_id": "req-1",
+                    "bucket": "covered",
+                    "evidence_id": "ev-1",
+                    "evidence_quote": "Built REST APIs in Python and FastAPI serving 10k daily users",
+                    "rationale": "Python used directly in production work.",
+                },
+                {
+                    "requirement_id": "req-2",
+                    "bucket": "gap",
+                    "evidence_id": None,
+                    "evidence_quote": None,
+                    "rationale": "No Kubernetes or container orchestration mentioned.",
+                },
+                {
+                    "requirement_id": "req-3",
+                    "bucket": "transferable",
+                    "evidence_id": "ev-2",
+                    "evidence_quote": "Deployed services to Google Cloud Run with Docker",
+                    "rationale": "GCP deployment experience transfers to AWS.",
+                },
+                {
+                    "requirement_id": "req-4",
+                    "bucket": "underemphasized",
+                    "evidence_id": "ev-3",
+                    "evidence_quote": "Skills: Python, Postgres, Docker, Git",
+                    "rationale": "Postgres is only listed in skills, never shown in use.",
+                },
+                {
+                    "requirement_id": "req-5",
+                    "bucket": "covered",
+                    "evidence_id": "ev-4",
+                    "evidence_quote": "Presented quarterly project results to a 40-person engineering org",
+                    "rationale": "Regular presentations to a large audience.",
+                },
+            ]
+        }
+    ),
+    "RewriteSuggestions": json.dumps(
+        {
+            "rewrites": [
+                {
+                    "evidence_id": "ev-2",
+                    "original_line": "Deployed services to Google Cloud Run with Docker",
+                    "suggested_line": "Containerized services with Docker and deployed them to Google Cloud (Cloud Run)",
+                    "requirement_ids": ["req-3"],
+                    "reason": "Names the cloud provider explicitly so cloud deployment experience is easy to spot.",
+                }
+            ]
+        }
+    ),
+    "GapRecommendations": json.dumps(
+        {
+            "recommendations": [
+                {
+                    "requirement_id": "req-2",
+                    "project_title": "Run your FastAPI app on local Kubernetes",
+                    "project_description": "Write a Deployment and Service manifest for an existing API, run it on minikube, and add a readiness probe.",
+                    "estimated_hours": 10,
+                    "resource_type": "tutorial",
+                    "resource_suggestion": "Official Kubernetes 'Hello Minikube' tutorial",
+                },
+                {
+                    "requirement_id": "req-3",
+                    "project_title": "Port a Cloud Run service to AWS",
+                    "project_description": "Deploy the same Docker image to AWS App Runner and document the differences from Cloud Run.",
+                    "estimated_hours": 6,
+                    "resource_type": "official_docs",
+                    "resource_suggestion": "AWS App Runner getting-started guide",
+                },
+            ]
+        }
+    ),
+}
+
+
+class FakeLLMClient(LLMClient):
+    def __init__(self, responses: dict[str, str | list[str]] | None = None) -> None:
+        source = DEFAULT_RESPONSES if responses is None else responses
+        # Copy lists so popping queued responses never mutates the caller's data.
+        self._responses: dict[str, str | list[str]] = {
+            k: list(v) if isinstance(v, list) else v for k, v in source.items()
+        }
+        self.calls: list[tuple[str, str]] = []  # (schema name, prompt) for test assertions
+
+    def _generate(self, prompt: str, schema: type[BaseModel]) -> str:
+        name = schema.__name__
+        self.calls.append((name, prompt))
+
+        if name not in self._responses:
+            raise LLMError(f"FakeLLMClient has no canned response for {name}")
+
+        value = self._responses[name]
+        if isinstance(value, str):
+            return value
+        if not value:
+            raise LLMError(f"FakeLLMClient ran out of queued responses for {name}")
+        return value.pop(0)

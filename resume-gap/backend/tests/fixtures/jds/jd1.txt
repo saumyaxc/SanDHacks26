@@ -1,0 +1,54 @@
+Software Engineering Intern-Information Systems (Summer 2027)
+San Jose, CA
+About the role
+Muon is seeking a Software Engineering Intern to join our Information Systems team and help build the internal software that keeps a fast-growing space company running. Information Systems builds and operates the tools that planning, hiring, finance, and engineering teams rely on every day, including workforce and staffing planning, integrations with our HR and recruiting systems, and the data feeds that connect them, so that our engineers can stay focused on building satellites.
+
+You will own a well-scoped project from start to finish, with direct mentorship from the team. Projects might include a new feature for an internal planning application, an integration between business systems, an automation that removes manual work for a team, or improvements to testing, deployment, and monitoring.
+
+Summer internships run roughly May through September. The role is full-time and on-site in San Jose, CA.
+
+Responsibilities
+Own a scoped project from design through testing and deployment, with mentor support
+Build full-stack features for internal web applications (React and TypeScript on the front end, Node.js and PostgreSQL on the back end)
+Build and maintain integrations and automations between business systems such as HRIS, applicant tracking, Google Workspace, Jira, and Slack
+Write automated tests and help improve CI/CD, monitoring, and cloud deployment practices
+Propose and refine software designs, take part in code reviews, and document your work
+Work with stakeholders in People, Finance, and Engineering to understand requirements and gather feedback
+Debug unfamiliar tools and systems and learn how a production system is operated
+Qualifications
+Currently pursuing a Bachelor's or Master's degree in computer science, software engineering, information systems, or a related field
+Coursework or practical experience in data structures, algorithms, databases, and web fundamentals
+Proficiency in at least one programming language such as JavaScript/TypeScript or Python
+Strong problem-solving and debugging skills
+Good communication and teamwork skills in a fast-paced environment
+Availability to work full-time, on-site in our San Jose location
+Nice-to-have Skills
+Prior internship, co-op, or team project experience
+Experience with React and Node.js
+Familiarity with SQL and relational databases such as PostgreSQL
+Experience working with REST APIs and OAuth
+Experience with Docker and a cloud platform (GCP or AWS), including CI/CD pipelines
+Experience scripting or automating workflows (for example Python or Google Apps Script)
+Interest in applying LLMs and AI tools to internal workflows
+Pay range
+Bachelor's students $40/hour
+
+Master's $45/hour
+
+PhD $50/hour
+
+ 
+
+About Muon Space
+Founded in 2021, Muon Space is an end-to-end Space Systems Provider that designs, builds, and operates LEO satellite constellations delivering mission-critical data. Our revolutionary, integrated technology stack enables customers to optimize every dimension of their missions for faster time-to-orbit and superior constellation remote sensing performance. Our state-of-the-art facility in the heart of Silicon Valley is optimized for manufacturing spacecraft and rapid, flexible payload integration at scale. From climate monitoring to national security, Muon Space is dedicated to delivering Earth Intelligence for a safer and more resilient world.
+
+Taking Care of Our Team
+At Muon salary is only part of our total compensation package. In addition to salary, full-time employees receive equity compensation as well as benefits including medical, dental, and vision insurance, a 401k retirement plan, short & long term disability and life insurance. We also offer three weeks paid vacation for new employees, along with 12 paid holidays, unlimited sick time and paid parental leave. 
+
+Our mission embraces the entire planet and we believe our team should too.  Muon is dedicated to creating a diverse and dynamic company and workforce. We believe in equal employment opportunity regardless of race, color, ancestry, religion, sex, age, national origin, citizenship, sexual orientation, marital status, disability, or gender identity. We value diversity in the workplace, and that starts with our applicants. We encourage you to apply, even if you don't check all the boxes, and we look forward to reviewing your application! In addition, if you need a reasonable accommodation as part of your application for employment or interviews with us, please let us know.
+
+Muon is currently registered and able to hire in the following states:
+AL, AZ, CA, CO, CT, DC, FL, GA, IL, IA, ID, MD, MA, MI, MN, MO, NJ, NY, NC, OH, OR, PA, TN, TX, VT, VA, WA
+
+ITAR/EAR Requirements
+This position requires access to export controlled information. To conform to U.S. Government export regulations applicable to that information, applicant must either be (A) a U.S. person, defined as a (i) U.S. citizen or national, (ii) U.S. lawful, permanent resident (green card holder), (iii) refugee under 8 U.S.C. § 1157, or (iv) asylee under 8 U.S.C. § 1158, (B) eligible to access the export controlled information without a required export authorization, or (C) eligible and reasonably likely to obtain the required export authorization from the applicable U.S. government agency. The Company may, for legitimate business reasons, decline to pursue any export licensing process.
