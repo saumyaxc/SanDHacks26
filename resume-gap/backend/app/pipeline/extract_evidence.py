@@ -6,7 +6,7 @@ from pathlib import Path
 from app.domain.quotes import normalize_for_quote, quote_in_text
 from app.domain.schemas import EvidenceExtraction, EvidenceItem, ExtractEvidenceInput, SkillMention
 from app.domain.skills import skill_vocabulary
-from app.llm.base import LLMClient
+from app.llm.base import LLMClient, LLMError
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def extract_evidence(data: ExtractEvidenceInput, llm: LLMClient) -> EvidenceExtr
 def _clean(extraction: EvidenceExtraction, resume_text: str) -> EvidenceExtraction:
     """Drop lines not found verbatim in the resume, drop duplicate lines, dedupe skills, renumber.
 
-    Raises ValueError (via the schema validator) if nothing survives.
+    Raises LLMError if nothing survives: the model returned no usable evidence.
     """
     seen_lines: set[str] = set()
     items: list[EvidenceItem] = []
@@ -41,6 +41,8 @@ def _clean(extraction: EvidenceExtraction, resume_text: str) -> EvidenceExtracti
         seen_lines.add(key)
         items.append(item.model_copy(update={"skills": _dedupe_skills(item.skills)}))
 
+    if not items:
+        raise LLMError("no extracted evidence line was found verbatim in the resume")
     return EvidenceExtraction(
         items=[item.model_copy(update={"id": f"ev-{i}"}) for i, item in enumerate(items, start=1)]
     )

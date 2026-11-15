@@ -232,7 +232,7 @@ def test_evidence_dedupes_lines_and_skills():
 
 
 def test_evidence_fails_if_nothing_is_verbatim():
-    with pytest.raises(ValueError):
+    with pytest.raises(LLMError):
         _run_evidence([_ev("a", "Invented line")], RESUME)
 
 

@@ -15,6 +15,20 @@ pip install -r requirements.txt
 cp ../.env.example ../.env   # then edit values
 ```
 
+## Run the API
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+- `GET  http://localhost:8000/api/health`
+- `POST http://localhost:8000/api/analyze` with `{"session_id", "jd_text", "resume_text"}`
+- Interactive docs: http://localhost:8000/docs
+
+`LLM_PROVIDER=fake` (the default) returns canned results with no API key. It only works if the resume
+contains the canned evidence lines; use `LLM_PROVIDER=gemini` for real resumes.
+
 ## Run tests
 
 ```bash
