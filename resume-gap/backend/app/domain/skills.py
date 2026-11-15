@@ -132,6 +132,9 @@ _GENERIC_NOUNS = frozenset(
         "application", "applications", "stack", "stacks", "solution", "solutions",
         "pipeline", "pipelines", "architecture", "architectures", "workflow", "workflows",
         "development", "engineering", "concepts", "fundamentals",
+        "api", "apis", "microservice", "microservices", "backend", "frontend", "cloud", "web", "mobile",
+        "programming", "scripting", "testing", "design", "analysis", "analytics", "modeling",
+        "algorithms", "structures", "data", "networking", "networks", "protocols", "security", "apps",
     }
 )  # fmt: skip
 

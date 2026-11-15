@@ -7,6 +7,8 @@ Guarantees, enforced here rather than trusted to the LLM:
 - A rewrite is dropped if it adds a number, or names a technology from the JD that the
   original line didn't already name — the two most common ways a "rewrite" becomes invention.
 - At most one rewrite per line.
+- Covered matches are targets too when the line shows the skill but not the job's word for it
+  ("GCP Firestore" for "databases"): adding the keyword is honest and helps keyword search.
 - Soft skills and traits never get rewrites: they're cover-letter/interview material.
 - A rewrite must contain the keyword of every requirement it claims to surface; a missing
   named technology (TypeScript from a JavaScript line) is never a rewrite target, since
@@ -99,9 +101,11 @@ def _targets(
     """evidence_id -> the matches that line could surface better, in resume order."""
     by_line: dict[str, list[RequirementMatch]] = {}
     for m in matches:
-        if m.bucket not in _TARGET_BUCKETS or m.satisfied_by or m.evidence_id is None:
+        if m.satisfied_by or m.evidence_id is None:
             continue
         req = requirements[m.requirement_id]
+        if m.bucket not in _TARGET_BUCKETS and not _shown_but_unnamed(m, req, evidence):
+            continue
         if req.category in INTERVIEW_CATEGORIES:
             continue  # soft skills/traits are shown in interviews, not reworded into bullets
         if m.bucket == Bucket.TRANSFERABLE and _is_specific_tech(req):
@@ -109,6 +113,17 @@ def _targets(
         if evidence[m.evidence_id].section in _REWRITABLE_SECTIONS:
             by_line.setdefault(m.evidence_id, []).append(m)
     return {eid: by_line[eid] for eid in evidence if eid in by_line}
+
+
+def _shown_but_unnamed(m: RequirementMatch, req: Requirement, evidence: dict[str, EvidenceItem]) -> bool:
+    """Covered, but the line doesn't use the job's word for it ("GCP Firestore" for "databases").
+
+    Adding the keyword is honest — the line already proves it — and it's what recruiters and
+    keyword filters search for. Named products never land here: covering one requires naming it.
+    """
+    if m.bucket != Bucket.COVERED or req.category == SkillCategory.CREDENTIAL or _is_specific_tech(req):
+        return False
+    return not text_names_any(evidence[m.evidence_id].line, skill_names(req.skill, req.canonical_skill))
 
 
 def _is_specific_tech(req: Requirement) -> bool:
@@ -120,9 +135,15 @@ def _missing_keyword(draft: RewriteDraft, requirements: dict[str, Requirement]) 
     for rid in draft.requirement_ids:
         req = requirements[rid]
         names = skill_names(req.skill, req.canonical_skill)
+        names |= {_other_number(n) for n in names}  # "databases" is also satisfied by "a ... database"
         if not text_names_any(draft.suggested_line, names):
             return f"doesn't include the keyword {req.skill!r}"
     return None
+
+
+def _other_number(name: str) -> str:
+    """Singular <-> plural for the last word: "databases" <-> "database", "rest api" <-> "rest apis"."""
+    return name[:-1] if name.endswith("s") and len(name) > 3 else name + "s"
 
 
 def _honesty_problem(draft: RewriteDraft, ev: EvidenceItem, technologies: list[Requirement]) -> str | None:

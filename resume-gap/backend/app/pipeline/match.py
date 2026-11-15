@@ -127,11 +127,14 @@ def _eligibility_checks(
         d = by_id[rule.id]
         ev = evidence.get(d.evidence_id) if d.evidence_id else None
         status, rationale = d.status, d.rationale
-        if rule.kind in (EligibilityKind.DEGREE_LEVEL, EligibilityKind.ENROLLMENT):
-            # Degree level vs. current program is decided in code when the wording allows
-            # ("rising senior pursuing a BS" is not met by an MS student).
+        if rule.kind != EligibilityKind.WORK_AUTHORIZATION:
+            # Degree level vs. current program is decided in code when the wording names one
+            # ("rising senior pursuing a BS" is not met by an MS student). It applies to every
+            # kind: "Rising junior or senior graduating in 2027" is a graduation rule, but an MS
+            # student fails it whatever the dates say.
             judged = judge_degree_rule(f"{rule.description} {rule.jd_quote}", programs)
-            if judged is not None:
+            is_level_rule = rule.kind in (EligibilityKind.DEGREE_LEVEL, EligibilityKind.ENROLLMENT)
+            if judged is not None and (is_level_rule or judged[0] == "not_met"):
                 status = EligibilityStatus(judged[0])
                 rationale = judged[1]
                 ev = evidence.get(judged[2])
@@ -159,8 +162,13 @@ def _check_technology(
 
     if not named:
         if decision.bucket in _SATISFYING:
-            note = f"(No line names {req.skill}; counted as related experience.)"
-            return Bucket.TRANSFERABLE, ev, f"{decision.rationale} {note}"
+            # The LLM claimed coverage that no line supports. Its sentence argued for that claim,
+            # so it can't be kept; code writes the rationale instead.
+            return (
+                Bucket.TRANSFERABLE,
+                ev,
+                f"Your resume doesn't name {req.skill}; this line is the closest related experience.",
+            )
         return decision.bucket, ev, decision.rationale
 
     best = named[0]

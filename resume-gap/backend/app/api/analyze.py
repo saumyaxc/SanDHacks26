@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 # Bump when prompts or pipeline logic change, so stored results aren't served as cache hits.
-_CACHE_VERSION = "10"
+_CACHE_VERSION = "11"
 
 
 def input_hash(request: AnalysisRequest) -> str:

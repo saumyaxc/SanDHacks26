@@ -303,7 +303,7 @@ def test_match_downgrades_tool_the_line_does_not_name():
     inp = _match_input([_req("req-1", "Docker")], [ev])
     m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
     assert m.bucket == Bucket.TRANSFERABLE
-    assert "No line names Docker" in m.rationale
+    assert m.rationale == "Your resume doesn't name Docker; this line is the closest related experience."
     assert m.evidence_quote == ev["line"]  # evidence is kept
 
 
@@ -844,3 +844,50 @@ def test_combined_eligibility_sentence_is_dropped_when_already_split():
     ]
     result = _extract([_req("x", "Python")], rules)
     assert [e.kind for e in result.eligibility] == ["degree_level", "graduation_window"]
+
+
+
+def test_override_replaces_the_llms_contradictory_rationale():
+    skills = _ev("ev-1", "Languages: Python, JavaScript, C++, Java, HTML/CSS, Rust", [], "skills")
+    inp = _match_input([_req("req-1", "TypeScript")], [skills])
+    llm = [{"requirement_id": "req-1", "bucket": "underemphasized", "evidence_id": "ev-1",
+            "rationale": "Rust is listed in the skills section without a specific project line."}]
+    m = _run_match(inp, llm).matches[0]
+    assert m.bucket == Bucket.TRANSFERABLE and "Rust" not in m.rationale and "TypeScript" in m.rationale
+
+
+def test_apis_is_a_kind_of_thing_so_fastapi_work_can_cover_it():
+    apis = _req("req-1", "APIs", "apis")  # stage 1 often labels this a technology
+    line = _ev("ev-1", "Built a coordination service with FastAPI and MQTT messaging", [], "project")
+    m = _run_match(_match_input([apis], [line]), [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.COVERED
+
+
+def test_graduation_rule_naming_undergrad_levels_fails_for_an_ms_student():
+    ms = _ev("ev-8", "Master of Science, Computer Science\tSept. 2026 – Jun. 2028", [], "education")
+    rule = _elig("elig-1", "graduation_window", "Rising Junior or Senior graduating in 2027 or 2028")
+    llm_says = [{"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-8", "rationale": "Ends June 2028."}]
+    result, _ = _match_with_eligibility([rule], [EV_BULLET, ms], [llm_says])
+    assert result.eligibility[0].status == "not_met"
+
+
+def test_graduation_rule_without_levels_keeps_the_date_judgment():
+    ms = _ev("ev-8", "Master of Science, Computer Science\tSept. 2026 – Jun. 2028", [], "education")
+    rule = _elig("elig-1", "graduation_window", "Graduating between December 2027 and June 2028")
+    llm_says = [{"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-8", "rationale": "Ends June 2028."}]
+    result, _ = _match_with_eligibility([rule], [EV_BULLET, ms], [llm_says])
+    assert result.eligibility[0].status == "met"
+
+
+def test_covered_but_unnamed_skill_gets_a_keyword_rewrite():
+    dbs = _req("req-1", "databases", "databases")
+    dbs["category"] = "concept"
+    line = _ev("ev-1", "Stored detection events in GCP Firestore across 74 logged runs", [], "project")
+    named = _ev("ev-2", "Built REST APIs in Python", [], "experience")
+    matches = [_m("req-1", "covered", line), _m("req-2", "covered", named)]
+    inp = _rewrite_input([dbs, _req("req-2", "Python")], [line, named], matches)
+    good = _draft("ev-1", "Stored detection events in a GCP Firestore database across 74 logged runs", ["req-1"])
+    result, llm = _run_rewrites(inp, [good])
+    prompt = llm.calls[0][1]
+    assert "ev-1 |" in prompt and "ev-2 |" not in prompt  # Python is already named on its line
+    assert [r.needs_confirmation for r in result.rewrites] == [False]  # the line already proves it
