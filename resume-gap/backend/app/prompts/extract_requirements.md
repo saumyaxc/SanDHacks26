@@ -36,7 +36,7 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
   - `concept`: a practice, method, or technical area that isn't one named product (CI/CD, debugging, system design, data visualization, API integration, technical documentation, machine learning, artificial intelligence)
   - Test: could a resume line name it as one specific thing? If not, it is `concept` — even when the JD adds "tools" or "technologies". "AI tools" -> concept. "Data visualization tools" -> concept. "OSINT tools" -> concept. "Tableau" -> technology.
   - `domain_knowledge`: industry or business-area knowledge
-  - `soft_skill`: interpersonal skills a resume line can show (communication, leadership, teamwork, mentoring)
+  - `soft_skill`: interpersonal skills and work styles (communication, leadership, teamwork, problem solving, critical thinking, prioritizing, navigating ambiguity). Name it as the ability ("Navigating ambiguity", not "Ambiguity").
   - `credential`: degrees, certifications, licenses
   - `trait`: interest, passion, enthusiasm, values, or mindset — including mission statements ("inspired by our mission to improve healthcare" is a trait, not healthcare knowledge) — something a resume can't prove, like "passion for Pinterest", "interest in financial services", "growth mindset", "comfort with ambiguity", "willingness to learn". Split a list of them into separate traits. Interest in a field is a `trait`; knowledge of a field is `domain_knowledge`.
 - `priority`: decide from WHERE and HOW the JD states the requirement. If its sentence says it's optional ("not required", "a plus", "prior experience not required"), it is `preferred`.
@@ -74,6 +74,10 @@ Separately from requirements, list every hard condition on WHO can apply, in `el
 Fields: `id` ("elig-1", "elig-2", ...), `kind`, `description` (short and specific, keep exact dates and degree names), `jd_quote` (verbatim).
 One rule per DISTINCT condition: "currently pursuing a Bachelor's" and "currently enrolled as a student" are the same condition — list it once.
 Do not put eligibility conditions in `requirements`. Use an empty list if there are none.
+
+## Not a job description?
+
+If the text is not a job posting (random text, a resume, a single sentence), set `is_job_description` to false and return empty `requirements` and `eligibility`. Never invent a requirement: every one must come from a sentence actually in the text.
 
 ## Known skills
 

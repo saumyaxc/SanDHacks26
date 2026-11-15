@@ -199,6 +199,14 @@ DEFAULT_RESPONSES: dict[str, str] = {
 }
 
 
+# A job description containing every canned requirement quote, so stage 1's verbatim check
+# passes in fake mode and in tests.
+DEFAULT_JD_TEXT = "Backend Engineer at Acme\n" + "\n".join(
+    [r["jd_quote"] for r in json.loads(DEFAULT_RESPONSES["RequirementsExtraction"])["requirements"]]
+    + [e["jd_quote"] for e in json.loads(DEFAULT_RESPONSES["RequirementsExtraction"])["eligibility"]]
+)
+
+
 class FakeLLMClient(LLMClient):
     def __init__(self, responses: dict[str, str | list[str]] | None = None) -> None:
         source = DEFAULT_RESPONSES if responses is None else responses

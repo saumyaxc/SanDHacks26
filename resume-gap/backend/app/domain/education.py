@@ -170,14 +170,9 @@ def judge_degree_rule(
 ) -> tuple[Literal["met", "not_met"], str, str] | None:
     """Decide a degree-level rule from the parsed timeline: (status, rationale, evidence_id),
     or None if the rule's wording or the resume is unclear."""
-    allowed = {level for level, pattern in _RULE_LEVELS if pattern.search(text)}
-    if _ADVANCED.search(text):
-        allowed |= {"master's", "doctorate"}
+    allowed = _allowed_levels(text)
     if not allowed:
         return None
-    if _OR_HIGHER.search(text):
-        floor = min(_LEVEL_RANK[level] for level in allowed)
-        allowed |= {level for level, rank in _LEVEL_RANK.items() if rank >= floor}
     wanted = _describe(allowed)
 
     if _STUDENT_STATUS.search(text):
@@ -208,3 +203,44 @@ def judge_degree_rule(
 def _describe(levels: set[str]) -> str:
     ordered = sorted(levels, key=lambda level: _LEVEL_RANK[level])
     return " or ".join(ordered)
+
+
+def _allowed_levels(text: str) -> set[str]:
+    """Degree levels a rule's wording accepts ("BS or higher" -> bachelor's and up)."""
+    allowed = {level for level, pattern in _RULE_LEVELS if pattern.search(text)}
+    if _ADVANCED.search(text):
+        allowed |= {"master's", "doctorate"}
+    if allowed and _OR_HIGHER.search(text):
+        floor = min(_LEVEL_RANK[level] for level in allowed)
+        allowed |= {level for level, rank in _LEVEL_RANK.items() if rank >= floor}
+    return allowed
+
+
+def student_levels(text: str) -> set[str]:
+    """Levels a student-status rule is for ("open to sophomore and junior undergraduates" ->
+    {"bachelor's"}); empty if the rule isn't about which students the job is for."""
+    return _allowed_levels(text) if _STUDENT_STATUS.search(text) else set()
+
+
+def judge_dates_for_level(wanted: set[str], programs: list[Program]) -> tuple[str, str | None] | None:
+    """A date/enrollment rule in a job for `wanted`-level students refers to THAT degree.
+
+    Returns (rationale, evidence_id) when no in-progress program of that level exists (so the
+    rule can't be met — e.g. the dates fit an MS, but the job wants a Bachelor's ending then),
+    or None when such a program exists and the dates should be judged normally.
+    """
+    if not wanted or any(p.status == "in progress" and p.level in wanted for p in programs):
+        return None
+    levels = _describe(wanted)
+    current = next((p for p in programs if p.current), None)
+    same_level_done = next((p for p in programs if p.level in wanted and p.status == "completed"), None)
+    if same_level_done is not None:
+        why = f"your {same_level_done.level} ended {_fmt(same_level_done.end)}"
+        evidence = same_level_done.evidence_id
+    elif current is not None:
+        why = f"your current program is a {current.level}"
+        evidence = current.evidence_id
+    else:
+        why = f"your resume shows no {levels} program in progress"
+        evidence = None
+    return f"This date applies to a {levels} degree, and {why}, so other programs' dates don't count.", evidence

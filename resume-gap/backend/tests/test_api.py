@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.db.memory_repo import MemoryRepository
 from app.dependencies import get_llm, get_repo, get_url_checker
 from app.llm.base import LLMError, LLMRateLimitError
-from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
+from app.llm.fake_client import DEFAULT_JD_TEXT, DEFAULT_RESPONSES, FakeLLMClient
 from app.main import app
 
 
@@ -43,7 +43,7 @@ def _use(llm) -> None:
 
 
 def _body(**overrides) -> dict:
-    return {"session_id": "s1", "jd_text": "Backend Engineer at Acme", "resume_text": _default_resume()} | overrides
+    return {"session_id": "s1", "jd_text": DEFAULT_JD_TEXT, "resume_text": _default_resume()} | overrides
 
 
 def test_health(client):
@@ -129,9 +129,9 @@ def test_known_skills_from_session_history_reach_the_pipeline(client, monkeypatc
 
     monkeypatch.setattr(analyze_module, "run_analysis", spy)
     _use(FakeLLMClient())
-    client.post("/api/analyze", json=_body(jd_text="first JD"))
-    client.post("/api/analyze", json=_body(jd_text="second JD"))
-    client.post("/api/analyze", json=_body(session_id="other", jd_text="third JD"))
+    client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nfirst JD"))
+    client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nsecond JD"))
+    client.post("/api/analyze", json=_body(session_id="other", jd_text=DEFAULT_JD_TEXT + "\nthird JD"))
 
     assert seen[0] == []  # fresh session
     assert seen[1] == ["aws", "communication", "kubernetes", "postgresql", "python"]
@@ -140,8 +140,8 @@ def test_known_skills_from_session_history_reach_the_pipeline(client, monkeypatc
 
 def test_history_lists_summaries_newest_first_and_gets_by_id(client):
     _use(FakeLLMClient())
-    old = client.post("/api/analyze", json=_body(jd_text="first JD")).json()
-    new = client.post("/api/analyze", json=_body(jd_text="second JD")).json()
+    old = client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nfirst JD")).json()
+    new = client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nsecond JD")).json()
 
     rows = client.get("/api/sessions/s1/analyses").json()
     assert [r["id"] for r in rows] == [new["id"], old["id"]]
@@ -199,8 +199,8 @@ def test_dismissed_gap_is_hidden_then_restorable(client):
 
 def test_ranked_gaps_carry_their_projects_and_the_saved_jd(client):
     _use(FakeLLMClient())
-    a = client.post("/api/analyze", json=_body(jd_text="Backend Engineer at Acme, needs K8s")).json()
-    assert a["jd_text"] == "Backend Engineer at Acme, needs K8s"
+    a = client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nBackend Engineer at Acme, needs K8s")).json()
+    assert a["jd_text"].endswith("Backend Engineer at Acme, needs K8s")
     k8s = client.get("/api/sessions/s1/gaps").json()["gaps"][0]
     assert k8s["canonical_skill"] == "kubernetes"
     assert len(k8s["recommendation"]["projects"]) == 2
@@ -211,9 +211,24 @@ def test_same_job_with_two_resumes_shares_a_job_key(client):
     _use(FakeLLMClient())
     client.post("/api/analyze", json=_body(resume_label="old.pdf"))
     client.post("/api/analyze", json=_body(resume_text=_default_resume() + "\n- Extra line", resume_label="new.pdf"))
-    client.post("/api/analyze", json=_body(jd_text="A different job entirely"))
+    client.post("/api/analyze", json=_body(jd_text=DEFAULT_JD_TEXT + "\nA different job entirely"))
     rows = client.get("/api/sessions/s1/analyses").json()
     assert [r["resume_label"] for r in rows] == ["", "new.pdf", "old.pdf"]  # newest first
     assert rows[1]["job_key"] == rows[2]["job_key"] != rows[0]["job_key"]
     # The ranking counts that job once, not once per resume.
     assert client.get("/api/sessions/s1/gaps").json()["analysis_count"] == 2
+
+
+def test_rerunning_the_same_resume_keeps_one_resume_fingerprint(client):
+    _use(FakeLLMClient())
+    a = client.post("/api/analyze", json=_body()).json()
+    b = client.post("/api/analyze", json=_body(resume_text=_default_resume() + "\n- Extra line")).json()
+    assert a["resume_hash"] and a["resume_hash"] != b["resume_hash"]
+    assert a["match_score"]["skills_counted"] == 4  # python, k8s, aws, postgres; communication is interview
+
+
+
+def test_text_that_isnt_a_job_description_is_a_clear_422(client):
+    _use(FakeLLMClient())  # its canned requirements quote text that isn't in this "JD"
+    r = client.post("/api/analyze", json=_body(jd_text="this is not a job description"))
+    assert r.status_code == 422 and "job posting" in r.json()["detail"]

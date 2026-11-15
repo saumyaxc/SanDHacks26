@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { groupByJob, type AnalysisSummary } from '../api'
+import { distinctResumes, groupByJob, type AnalysisSummary } from '../api'
 
 const VISIBLE = 4
 
@@ -46,7 +46,11 @@ export function History({
                 </span>
                 <span className="history-meta">
                   <strong>{newest.match_percent}% match</strong>
-                  {versions.length > 1 && <span className="badge versions-badge">{versions.length} resumes</span>}
+                  {versions.length > 1 && (
+                    <span className="badge versions-badge">
+                      {distinctResumes(versions) > 1 ? `${distinctResumes(versions)} resumes` : `${versions.length} runs`}
+                    </span>
+                  )}
                   {' · '}
                   {new Date(newest.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </span>

@@ -10,6 +10,7 @@ from app.dependencies import get_llm, get_repo, get_url_checker
 from app.domain.redact import redact_resume
 from app.domain.schemas import AnalysisRequest, AnalysisResult
 from app.llm.base import LLMClient, LLMError, LLMRateLimitError
+from app.pipeline.extract_requirements import NotAJobDescription
 from app.pipeline.orchestrator import run_analysis
 from app.pipeline.recommend_gaps import UrlChecker
 
@@ -18,7 +19,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 # Bump when prompts or pipeline logic change, so stored results aren't served as cache hits.
-_CACHE_VERSION = "11"
+_CACHE_VERSION = "14"
 
 
 def input_hash(request: AnalysisRequest) -> str:
@@ -52,6 +53,8 @@ def analyze(
 
     try:
         result = run_analysis(request, llm, url_is_live, known_skills=repo.known_skills(request.session_id))
+    except NotAJobDescription as e:
+        raise HTTPException(422, str(e))
     except LLMRateLimitError as e:
         log.warning("rate limited: %s", e)
         headers = {"Retry-After": str(math.ceil(e.retry_after_seconds))} if e.retry_after_seconds else None

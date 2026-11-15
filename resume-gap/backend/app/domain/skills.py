@@ -69,10 +69,20 @@ ALIASES: dict[str, str] = {
     "dsa": "data structures and algorithms",
     "data structures": "data structures and algorithms",
     "algorithms": "data structures and algorithms",
-    # Soft skills
+    # Soft skills / work styles (one name each; see SOFT_SKILLS)
     "written communication": "communication",
     "verbal communication": "communication",
     "written and verbal communication": "communication",
+    "communication skills": "communication",
+    "problem solving skills": "problem solving",
+    "ambiguity": "navigating ambiguity",
+    "comfort with ambiguity": "navigating ambiguity",
+    "dealing with ambiguity": "navigating ambiguity",
+    "multitasking": "prioritization",
+    "multi tasking": "prioritization",
+    "prioritizing": "prioritization",
+    "team work": "teamwork",
+    "collaborative": "collaboration",
     # Cross-field seed
     "ms excel": "excel",
     "microsoft excel": "excel",
@@ -93,7 +103,7 @@ def normalize_skill(raw: str) -> str:
 
 def known_canonical_skills() -> set[str]:
     """Seed vocabulary shown to the LLM so it reuses existing canonical names."""
-    return set(ALIASES.values())
+    return set(ALIASES.values()) | SOFT_SKILLS
 
 
 def skill_vocabulary(extra: list[str]) -> list[str]:
@@ -143,3 +153,27 @@ def is_named_product(canonical_skill: str) -> bool:
     """True for one specific named thing (python, react, postgresql, aws, power bi);
     False for a kind of thing (search systems, ai coding tools, relational databases)."""
     return not (set(canonical_skill.lower().split()) & _GENERIC_NOUNS)
+
+
+# Universal soft skills and work styles. A safety net like ALIASES: whatever category stage 1
+# gives them, these are interview material, never resume gaps (see enums.INTERVIEW_CATEGORIES).
+# Behaviors only — no technical skills belong here.
+SOFT_SKILLS = frozenset(
+    {
+        "communication", "teamwork", "collaboration", "leadership", "mentoring", "problem solving",
+        "critical thinking", "analytical thinking", "navigating ambiguity", "adaptability",
+        "prioritization", "time management", "attention to detail", "organization", "ownership",
+        "initiative", "accountability", "curiosity", "creativity", "growth mindset",
+        "self motivation", "work ethic", "interpersonal skills", "stakeholder management",
+        "presentation skills", "empathy", "learning agility", "willingness to learn",
+    }
+)  # fmt: skip
+
+
+def is_soft_skill(canonical_skill: str) -> bool:
+    return canonical_skill in SOFT_SKILLS
+
+
+def display_name(canonical_skill: str) -> str:
+    """'navigating ambiguity' -> 'Navigating ambiguity' (consistent soft-skill labels)."""
+    return canonical_skill[:1].upper() + canonical_skill[1:]

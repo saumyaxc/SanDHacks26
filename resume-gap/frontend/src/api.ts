@@ -83,6 +83,7 @@ export interface MatchScore {
   percent: number // 0-100, required skills weighted double
   required_met: number
   required_total: number
+  skills_counted: number // requirements in the four buckets ("any one of these" lists count once)
   verdict: Verdict
 }
 
@@ -92,6 +93,7 @@ export interface AnalysisResult {
   created_at: string
   jd_text: string // the saved job posting ("" for analyses saved before JDs were stored)
   resume_label: string // which resume it was run with ("resume.pdf", "pasted text")
+  resume_hash: string // same resume text -> same value ("" for older analyses)
   job_key: string // equal for analyses of the same job posting
   requirements: {
     role_title: string
@@ -115,6 +117,17 @@ export interface AnalysisSummary {
   match_percent: number
   job_key: string
   resume_label: string
+  resume_hash: string
+}
+
+/** A short, clean name for the resume an analysis used. */
+export function resumeName(label: string): string {
+  return label && label !== 'pasted text' ? label : 'Pasted resume'
+}
+
+/** How many different resumes a job's analyses used (re-runs of one resume count once). */
+export function distinctResumes(versions: AnalysisSummary[]): number {
+  return new Set(versions.map((v) => v.resume_hash || v.resume_label || v.id)).size
 }
 
 export interface ParsedResume {

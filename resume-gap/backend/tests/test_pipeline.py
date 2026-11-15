@@ -17,7 +17,7 @@ from app.domain.schemas import (
     RewriteInput,
 )
 from app.llm.base import LLMError
-from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
+from app.llm.fake_client import DEFAULT_JD_TEXT, DEFAULT_RESPONSES, FakeLLMClient
 from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 from app.pipeline.match import match
@@ -51,12 +51,13 @@ def _fake(requirements: list[dict]) -> FakeLLMClient:
 
 
 def _run(requirements: list[dict], **input_kwargs) -> RequirementsExtraction:
-    return extract_requirements(ExtractRequirementsInput(jd_text="jd", **input_kwargs), _fake(requirements))
+    jd = "\n".join(r["jd_quote"] for r in requirements)
+    return extract_requirements(ExtractRequirementsInput(jd_text=jd, **input_kwargs), _fake(requirements))
 
 
 def test_prompt_contains_jd_and_known_skills():
     llm = _fake([_req("x", "Python")])
-    jd = "We need Python. Literal {braces} are fine."
+    jd = "We need Python. Literal {braces} are fine.\nquote for Python"
 
     extract_requirements(ExtractRequirementsInput(jd_text=jd, known_skills=["Snowflake"]), llm)
 
@@ -138,7 +139,7 @@ def test_standalone_occurrence_pulls_skill_out_of_group():
 
 
 def test_default_fake_responses():
-    result = extract_requirements(ExtractRequirementsInput(jd_text="jd"), FakeLLMClient())
+    result = extract_requirements(ExtractRequirementsInput(jd_text=DEFAULT_JD_TEXT), FakeLLMClient())
     assert len(result.requirements) == 5
 
 
@@ -409,7 +410,7 @@ def test_match_fails_when_requirement_missing_twice():
 
 def test_match_with_default_fake_pipeline():
     llm = FakeLLMClient()
-    reqs = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    reqs = extract_requirements(ExtractRequirementsInput(jd_text=DEFAULT_JD_TEXT), llm)
     evidence = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), llm)
     result = match(MatchInput(requirements=reqs, evidence=evidence), llm)
     assert [m.bucket for m in result.matches] == [
@@ -636,7 +637,7 @@ def test_recommend_keeps_multiple_projects():
 
 def test_full_default_fake_pipeline():
     llm = FakeLLMClient()
-    reqs = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    reqs = extract_requirements(ExtractRequirementsInput(jd_text=DEFAULT_JD_TEXT), llm)
     evidence = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), llm)
     matches = match(MatchInput(requirements=reqs, evidence=evidence), llm)
     rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=matches), llm)
@@ -692,7 +693,8 @@ def test_requirements_eligibility_is_renumbered():
         "eligibility": [_elig("a", "enrollment", "Returning to school after the internship"), _elig("b", "degree_level", "Pursuing a BS")],
     }
     llm = FakeLLMClient({"RequirementsExtraction": json.dumps(payload)})
-    result = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    jd = "\n".join(x["jd_quote"] for x in payload["requirements"] + payload["eligibility"])
+    result = extract_requirements(ExtractRequirementsInput(jd_text=jd), llm)
     assert [e.id for e in result.eligibility] == ["elig-1", "elig-2"]
 
 
@@ -776,7 +778,8 @@ def test_concept_backed_by_coursework_is_covered_even_without_the_jds_wording():
 
 def _extract(reqs: list[dict], eligibility: list[dict] | None = None) -> RequirementsExtraction:
     payload = {"role_title": "Intern", "requirements": reqs, "eligibility": eligibility or []}
-    return extract_requirements(ExtractRequirementsInput(jd_text="jd"), FakeLLMClient({"RequirementsExtraction": json.dumps(payload)}))
+    jd = "\n".join(x["jd_quote"] for x in reqs + (eligibility or []))
+    return extract_requirements(ExtractRequirementsInput(jd_text=jd), FakeLLMClient({"RequirementsExtraction": json.dumps(payload)}))
 
 
 def test_curiosity_about_a_field_becomes_an_optional_trait():
@@ -891,3 +894,70 @@ def test_covered_but_unnamed_skill_gets_a_keyword_rewrite():
     prompt = llm.calls[0][1]
     assert "ev-1 |" in prompt and "ev-2 |" not in prompt  # Python is already named on its line
     assert [r.needs_confirmation for r in result.rewrites] == [False]  # the line already proves it
+
+
+def test_universal_soft_skills_are_interview_items_with_clear_names():
+    solving = _req("x", "Problem-solving", "problem solving")
+    solving["category"] = "concept"  # mislabeled by stage 1
+    ambiguity = _req("y", "ambiguity")  # bare noun; canonical comes from the alias
+    ambiguity["category"] = "trait"
+    reqs = _extract([solving, ambiguity, _req("z", "Python")]).requirements
+    assert [(r.skill, r.category) for r in reqs] == [
+        ("Problem solving", "soft_skill"),
+        ("Navigating ambiguity", "trait"),
+        ("Python", "technology"),
+    ]
+
+
+def test_graduation_date_must_be_for_the_degree_level_the_job_wants():
+    ms = _ev("ev-8", "Master of Science, Computer Science\tSept. 2026 – Jun. 2028", [], "education")
+    bs = _ev("ev-9", "Bachelor of Science, Computer Science\tSept. 2022 – Jun. 2026", [], "education")
+    rules = [
+        _elig("elig-1", "enrollment", "Open to Sophomore and Junior undergraduate students"),
+        _elig("elig-2", "graduation_window", "Expected graduation date of Summer 2028 or Summer 2029"),
+    ]
+    llm_says = [
+        {"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-8", "rationale": "Enrolled."},
+        {"eligibility_id": "elig-2", "status": "met", "evidence_id": "ev-8", "rationale": "MS ends Jun 2028."},
+    ]
+    result, _ = _match_with_eligibility(rules, [EV_BULLET, ms, bs], [llm_says])
+    level, dates = result.eligibility
+    assert level.status == "not_met"
+    assert dates.status == "not_met" and "bachelor's ended Jun 2026" in dates.rationale
+    assert dates.evidence_quote == bs["line"]
+
+
+def test_graduation_date_for_a_job_open_to_masters_students_is_judged_normally():
+    ms = _ev("ev-8", "Master of Science, Computer Science\tSept. 2026 – Jun. 2028", [], "education")
+    rules = [
+        _elig("elig-1", "degree_level", "Currently pursuing a Bachelor's or Master's degree"),
+        _elig("elig-2", "graduation_window", "Graduating in 2028"),
+    ]
+    llm_says = [
+        {"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-8", "rationale": "In MS."},
+        {"eligibility_id": "elig-2", "status": "met", "evidence_id": "ev-8", "rationale": "MS ends Jun 2028."},
+    ]
+    result, _ = _match_with_eligibility(rules, [EV_BULLET, ms], [llm_says])
+    assert [c.status for c in result.eligibility] == ["met", "met"]
+
+
+
+def test_invented_requirements_are_dropped_and_non_jds_rejected():
+    from app.pipeline.extract_requirements import NotAJobDescription
+
+    real = _req("x", "Python")
+    invented = _req("y", "Communication")
+    invented["jd_quote"] = "Excellent communication skills"  # not in the JD below
+    payload = {"role_title": "Intern", "requirements": [real, invented]}
+    llm = FakeLLMClient({"RequirementsExtraction": json.dumps(payload)})
+    result = extract_requirements(ExtractRequirementsInput(jd_text=real["jd_quote"]), llm)
+    assert [r.canonical_skill for r in result.requirements] == ["python"]
+
+    only_invented = FakeLLMClient({"RequirementsExtraction": json.dumps({"role_title": "?", "requirements": [invented]})})
+    with pytest.raises(NotAJobDescription):
+        extract_requirements(ExtractRequirementsInput(jd_text="this is not a job description"), only_invented)
+
+    honest = FakeLLMClient({"RequirementsExtraction": json.dumps(
+        {"role_title": "?", "requirements": [], "is_job_description": False})})
+    with pytest.raises(NotAJobDescription):
+        extract_requirements(ExtractRequirementsInput(jd_text="this is not a job description"), honest)

@@ -1445,3 +1445,12 @@ details > summary:hover {
 .home-how[open] > summary {
   margin-bottom: 12px;
 }
+
+.app-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+}

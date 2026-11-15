@@ -21,7 +21,14 @@ Guarantees, enforced here rather than trusted to the LLM:
 from datetime import date
 from pathlib import Path
 
-from app.domain.education import Program, education_timeline, format_timeline, judge_degree_rule
+from app.domain.education import (
+    Program,
+    education_timeline,
+    format_timeline,
+    judge_dates_for_level,
+    judge_degree_rule,
+    student_levels,
+)
 from app.domain.enums import (
     INTERVIEW_CATEGORIES,
     Bucket,
@@ -122,6 +129,12 @@ def _eligibility_checks(
     programs: list[Program],
 ) -> list[EligibilityCheck]:
     by_id = {d.eligibility_id: d for d in decisions.eligibility}
+    # Which students the job is for ("sophomore and junior undergraduates" -> bachelor's).
+    # Date rules then refer to THAT degree: an MS ending in 2028 doesn't meet "graduating in
+    # 2028" for a job that wants undergraduates.
+    wanted_levels: set[str] = set()
+    for rule in rules:
+        wanted_levels |= student_levels(f"{rule.description} {rule.jd_quote}")
     checks = []
     for rule in rules:
         d = by_id[rule.id]
@@ -138,6 +151,12 @@ def _eligibility_checks(
                 status = EligibilityStatus(judged[0])
                 rationale = judged[1]
                 ev = evidence.get(judged[2])
+            elif rule.kind == EligibilityKind.GRADUATION_WINDOW and status == EligibilityStatus.MET:
+                wrong_degree = judge_dates_for_level(wanted_levels, programs)
+                if wrong_degree is not None:
+                    status = EligibilityStatus.NOT_MET
+                    rationale, ev_id = wrong_degree
+                    ev = evidence.get(ev_id) if ev_id else None
         if rule.kind == EligibilityKind.WORK_AUTHORIZATION:
             status = EligibilityStatus.UNKNOWN
             rationale = "Resumes don't show work authorization. Check this yourself before applying."

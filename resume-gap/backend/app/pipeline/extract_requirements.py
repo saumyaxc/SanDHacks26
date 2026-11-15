@@ -1,15 +1,20 @@
 """Stage 1: JD text -> structured, de-duplicated requirements.
 
 Code backstops on the LLM's labels, read from the JD's own wording (plain English, not skills):
+- Universal soft skills (skills.SOFT_SKILLS: problem solving, navigating ambiguity, ...) are
+  always interview material, with one consistent display name.
 - "curiosity about / interest in / passion for X" makes X a trait (interview material).
 - "not required", "a plus", "nice to have", "bonus" in its JD sentence make it preferred.
 - An enrollment rule that only restates "currently pursuing a degree" is dropped as a duplicate.
+- Every requirement and eligibility rule must quote the JD verbatim, or it's dropped (an
+  invented requirement can't quote text that isn't there). Nothing left -> NotAJobDescription.
 - A "credential" phrased as student status ("a rising senior pursuing a BS") is moved to
   eligibility, where it's checked against the candidate's CURRENT program, not their degrees.
 - A domain item from a mission/inspiration sentence with no experience or knowledge asked
   ("inspired by our mission to improve healthcare") is a trait.
 """
 
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -21,8 +26,11 @@ from app.domain.schemas import (
     Requirement,
     RequirementsExtraction,
 )
-from app.domain.skills import skill_vocabulary
+from app.domain.quotes import quote_in_text
+from app.domain.skills import display_name, is_soft_skill, skill_vocabulary
 from app.llm.base import LLMClient
+
+log = logging.getLogger(__name__)
 
 _PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "extract_requirements.md").read_text(
     encoding="utf-8"
@@ -36,7 +44,26 @@ def extract_requirements(data: ExtractRequirementsInput, llm: LLMClient) -> Requ
         "{{JD_TEXT}}", data.jd_text
     )
     raw = llm.complete_json(prompt, RequirementsExtraction)
-    return _clean(raw)
+    if not raw.is_job_description:
+        raise NotAJobDescription("This doesn't look like a job description. Paste the full job posting.")
+    real = raw.model_copy(
+        update={
+            "requirements": [r for r in raw.requirements if quote_in_text(r.jd_quote, data.jd_text)],
+            "eligibility": [e for e in raw.eligibility if quote_in_text(e.jd_quote, data.jd_text)],
+        }
+    )
+    dropped = len(raw.requirements) - len(real.requirements)
+    if dropped:
+        log.warning("dropped %d requirement(s) whose quote isn't in the job description", dropped)
+    if not real.requirements:
+        raise NotAJobDescription(
+            "Couldn't find any requirements in that text. Paste the full job posting, including its qualifications."
+        )
+    return _clean(real)
+
+
+class NotAJobDescription(ValueError):
+    """The JD text has no real requirements (wrong text pasted). Safe to show the user."""
 
 
 def _clean(extraction: RequirementsExtraction) -> RequirementsExtraction:
@@ -94,6 +121,12 @@ def _is_student_status_credential(req: Requirement) -> bool:
 def _backstop(req: Requirement) -> Requirement:
     update: dict = {}
     quote = req.jd_quote
+    # Universal soft skills are interview material whatever the LLM labeled them, and get one
+    # clear name ("ambiguity" -> "Navigating ambiguity").
+    if is_soft_skill(req.canonical_skill):
+        if req.category not in (SkillCategory.SOFT_SKILL, SkillCategory.TRAIT):
+            update["category"] = SkillCategory.SOFT_SKILL
+        update["skill"] = display_name(req.canonical_skill)
     # "Inspired by our mission to improve healthcare": enthusiasm for the field, not knowledge of it.
     if req.category == SkillCategory.DOMAIN_KNOWLEDGE and _MISSION.search(quote) and not _EXPERIENCE.search(quote):
         update["category"] = SkillCategory.TRAIT

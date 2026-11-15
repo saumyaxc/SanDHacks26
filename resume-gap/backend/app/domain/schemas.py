@@ -80,11 +80,13 @@ class RequirementsExtraction(_Base):
     company: str | None = None
     requirements: list[Requirement]
     eligibility: list[EligibilityRequirement] = []
+    # The model's honest way out: text that isn't a job posting gets False, not invented requirements.
+    is_job_description: bool = True
 
     @model_validator(mode="after")
     def _validate(self) -> "RequirementsExtraction":
-        if not self.requirements:
-            raise ValueError("no requirements extracted")
+        if self.is_job_description and not self.requirements:
+            raise ValueError("no requirements extracted; if this isn't a job posting, set is_job_description to false")
         _check_unique_ids([r.id for r in self.requirements], "requirement")
         _check_unique_ids([e.id for e in self.eligibility], "eligibility")
         return self
@@ -406,6 +408,9 @@ class AnalysisResult(_Base):
     # Raw resume text is never stored; only the extracted, verified lines in `evidence`.
     jd_text: str = ""
     resume_label: str = ""  # which resume this was run with ("resume.pdf", "pasted text")
+    # Fingerprint of the cleaned resume text: tells "same resume, run again" from "a different
+    # resume" when grouping a job's analyses. Not reversible to the text.
+    resume_hash: str = ""
     requirements: RequirementsExtraction
     evidence: EvidenceExtraction
     matches: MatchResult
@@ -457,6 +462,7 @@ class AnalysisSummary(_Base):
     match_percent: int
     job_key: str  # equal for analyses of the same job posting
     resume_label: str
+    resume_hash: str
 
     @classmethod
     def from_result(cls, result: AnalysisResult) -> "AnalysisSummary":
@@ -472,6 +478,7 @@ class AnalysisSummary(_Base):
             match_percent=result.match_score.percent,
             job_key=result.job_key,
             resume_label=result.resume_label,
+            resume_hash=result.resume_hash,
         )
 
 

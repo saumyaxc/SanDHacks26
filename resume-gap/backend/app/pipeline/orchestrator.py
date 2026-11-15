@@ -10,6 +10,7 @@ Five LLM calls in three rounds. Any stage's LLMError propagates to the caller.
 `url_is_live` checks resource links in stage 5 (injected so tests never hit the network).
 """
 
+import hashlib
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -69,9 +70,15 @@ def run_analysis(
         created_at=datetime.now(UTC),
         jd_text=request.jd_text,
         resume_label=request.resume_label,
+        resume_hash=_fingerprint(request.resume_text),
         requirements=requirements,
         evidence=evidence,
         matches=matches,
         rewrites=rewrites,
         recommendations=recommendations,
     )
+
+
+def _fingerprint(text: str) -> str:
+    """Same resume (ignoring whitespace and case) -> same short hash."""
+    return hashlib.sha256(" ".join(text.lower().split()).encode()).hexdigest()[:16]

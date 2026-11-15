@@ -12,6 +12,7 @@ import {
   type RequirementMatch,
   type Rewrite,
   type Verdict,
+  resumeName,
 } from '../api'
 import { BUCKET_INFO } from '../buckets'
 import { ProjectPlan } from './Projects'
@@ -122,10 +123,15 @@ export function Results({
                 className={`version-tab ${selected ? 'selected' : ''}`}
                 onClick={() => !selected && onSelectVersion(v.id)}
               >
-                <span className="version-name">{v.resume_label || 'Resume'}</span>
+                <span className="version-name">{resumeName(v.resume_label)}</span>
                 <span className="muted small">
-                  {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ·{' '}
-                  {v.match_percent}%
+                  {new Date(v.created_at).toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}{' '}
+                  · {v.match_percent}%
                 </span>
               </button>
             )
@@ -259,8 +265,10 @@ function ScoreCard({
         <details className="score-how">
           <summary>How is this calculated?</summary>
           <p>
-            Each requirement earns credit: covered 100%, underemphasized 80%, transferable 40%, gap 0%. Required skills
-            count double, and "any one of these" lists count once. It's a guide, not a verdict on you.
+            Based on the {score.skills_counted} job skills in the Match tab ({score.required_total} required). Each earns
+            credit: covered 100%, underemphasized 80%, transferable 40%, gap 0%. Required skills count double, and an
+            "any one of these" list counts once, at its best option. Not counted: cover letter &amp; interview items,
+            degrees, and eligibility. It's a guide, not a verdict on you.
           </p>
         </details>
       </div>

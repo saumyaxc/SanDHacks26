@@ -34,6 +34,7 @@ class MatchScore(BaseModel):  # plain BaseModel: schemas.py imports this module
     percent: int  # 0-100
     required_met: int  # required requirements (groups count once) you have
     required_total: int
+    skills_counted: int = 0  # requirements in the four buckets, each "any one of these" list once
     verdict: Verdict  # not_eligible if any rule is failed; else strong >= 75, tailor >= 50, else stretch
 
 
@@ -53,4 +54,10 @@ def match_score(units: list[tuple[Priority, list[Bucket]]], ineligible: bool = F
     verdict: Verdict = (
         "not_eligible" if ineligible else "strong" if percent >= 75 else "tailor" if percent >= 50 else "stretch"
     )
-    return MatchScore(percent=percent, required_met=required_met, required_total=required_total, verdict=verdict)
+    return MatchScore(
+        percent=percent,
+        required_met=required_met,
+        required_total=required_total,
+        skills_counted=len(units),
+        verdict=verdict,
+    )
