@@ -76,7 +76,7 @@ def main() -> None:
             pri = "REQ " if r.priority == "required" else "pref"
             group = f" [{r.any_of_group}]" if r.any_of_group else ""
             sat = f"  (satisfied by {m.satisfied_by})" if m.satisfied_by else ""
-            print(f"  {r.id:<7}{pri} {r.canonical_skill + group:<34}{m.bucket.upper():<16}{m.evidence_id or '':<6}{sat}")
+            print(f"  {r.id:<7}{pri} {r.canonical_skill + group:<34} {m.bucket.upper():<16}{m.evidence_id or '':<6}{sat}")
             if m.evidence_quote:
                 q = m.evidence_quote
                 print(f"  {'':<12}\"{q if len(q) <= _QUOTE_WIDTH else q[: _QUOTE_WIDTH - 3] + '...'}\"")

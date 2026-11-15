@@ -3,8 +3,10 @@
 Guarantees, enforced here rather than trusted to the LLM:
 - Every non-gap match quotes a real resume line: the LLM picks an evidence_id,
   and the quote is copied from that evidence item (which stage 2 verified).
-- A named tool/technical skill is only covered/underemphasized if the evidence
-  line actually names it (text, tags, or a known alias); otherwise it's transferable.
+- For a `technology` requirement, code decides whether the resume has it: if any
+  line names it (tag, text, or known alias), the best such line is used; if none
+  does, the LLM may only choose transferable or gap. Concepts, soft skills,
+  domain knowledge, and credentials are judged by the LLM.
 - "Covered" means demonstrated: a skills-list line, or a coursework line for a
   non-credential, is downgraded to underemphasized.
 - A requirement satisfied by another member of its any_of_group is marked satisfied_by.
@@ -18,6 +20,7 @@ from app.domain.quotes import normalize_for_quote
 from app.domain.skills import ALIASES, normalize_skill
 from app.domain.schemas import (
     EvidenceItem,
+    MatchDecision,
     MatchDecisions,
     MatchInput,
     MatchResult,
@@ -31,17 +34,23 @@ _PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "match.md").read_te
 # Best first: which buckets mean "the resume has this skill".
 _SATISFYING = (Bucket.COVERED, Bucket.UNDEREMPHASIZED)
 
-# Categories where "has the skill" must be backed by the line naming it.
-# Soft skills, domain knowledge, and credentials are judged by the LLM alone.
-_NAME_CHECKED = {SkillCategory.TOOL, SkillCategory.TECHNICAL_SKILL}
+# Lower is stronger evidence: doing it beats a summary beats listing it.
+_SECTION_RANK = {
+    ResumeSection.EXPERIENCE: 0,
+    ResumeSection.PROJECT: 0,
+    ResumeSection.OTHER: 1,
+    ResumeSection.EDUCATION: 2,
+    ResumeSection.SKILLS: 2,
+}
 
 
 def match(data: MatchInput, llm: LLMClient) -> MatchResult:
     requirements = data.requirements.requirements
-    evidence = {e.id: e for e in data.evidence.items}
+    items = data.evidence.items
+    evidence = {e.id: e for e in items}
 
     prompt = _PROMPT.replace("{{REQUIREMENTS}}", _format_requirements(requirements)).replace(
-        "{{EVIDENCE}}", _format_evidence(data.evidence.items)
+        "{{EVIDENCE}}", _format_evidence(items)
     )
     decisions = llm.complete_json(
         prompt,
@@ -56,9 +65,8 @@ def match(data: MatchInput, llm: LLMClient) -> MatchResult:
         ev = evidence.get(decision.evidence_id) if decision.bucket != Bucket.GAP else None
         bucket, rationale = decision.bucket, decision.rationale
 
-        if ev is not None and bucket in _SATISFYING and req.category in _NAME_CHECKED and not _names_skill(req, ev):
-            bucket = Bucket.TRANSFERABLE
-            rationale = f"{rationale} (Line doesn't name {req.canonical_skill}; counted as related experience.)"
+        if req.category == SkillCategory.TECHNOLOGY:
+            bucket, ev, rationale = _check_technology(req, decision, ev, items)
 
         matches.append(
             RequirementMatch(
@@ -72,6 +80,33 @@ def match(data: MatchInput, llm: LLMClient) -> MatchResult:
     return MatchResult(matches=_apply_groups(matches, requirements))
 
 
+def _check_technology(
+    req: Requirement, decision: MatchDecision, ev: EvidenceItem | None, items: list[EvidenceItem]
+) -> tuple[Bucket, EvidenceItem | None, str]:
+    """Whether the resume has a named technology is a string fact, so code decides it."""
+    named = sorted((e for e in items if _names_skill(req, e)), key=lambda e: _SECTION_RANK[e.section])
+
+    if not named:
+        if decision.bucket in _SATISFYING:
+            note = f"(No line names {req.skill}; counted as related experience.)"
+            return Bucket.TRANSFERABLE, ev, f"{decision.rationale} {note}"
+        return decision.bucket, ev, decision.rationale
+
+    best = named[0]
+    # Keep the LLM's call when it already picked a naming line at least as strong as the best one.
+    if decision.bucket in _SATISFYING and ev in named and _SECTION_RANK[ev.section] <= _SECTION_RANK[best.section]:
+        return decision.bucket, ev, decision.rationale
+    return Bucket.COVERED, best, _named_rationale(req, best)
+
+
+def _named_rationale(req: Requirement, ev: EvidenceItem) -> str:
+    if ev.section == ResumeSection.SKILLS:
+        return f"{req.skill} is listed in your skills but not shown in use."
+    if ev.section == ResumeSection.EDUCATION:
+        return f"{req.skill} appears only in your education/coursework."
+    return f"This {ev.section} line names {req.skill} directly."
+
+
 def _names_skill(req: Requirement, ev: EvidenceItem) -> bool:
     """True if the evidence line names the requirement's skill by tag, text, or alias."""
     if req.canonical_skill in {s.canonical_skill for s in ev.skills}:
@@ -83,8 +118,9 @@ def _names_skill(req: Requirement, ev: EvidenceItem) -> bool:
 
 
 def _contains_term(text: str, term: str) -> bool:
-    # Whole-term match: "go" must not match "going"; works for "c++", "node.js", "ci/cd".
-    return bool(term) and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text) is not None
+    # Whole-term match: "go" must not match "going", "c" must not match "c++" or "c#";
+    # still works for terms that contain symbols ("c++", "node.js", "ci/cd").
+    return bool(term) and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9+#])", text) is not None
 
 
 def _format_requirements(requirements: list[Requirement]) -> str:

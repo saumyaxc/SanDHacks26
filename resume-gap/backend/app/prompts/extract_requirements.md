@@ -31,8 +31,9 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
   - Otherwise use the most common industry name. Drop filler words like "tools", "skills", "technologies", "concepts", "experience".
   - "K8s" -> "kubernetes". "AI technologies" -> "artificial intelligence". "Data visualization tools" -> "data visualization". "Problem-solving skills" -> "problem solving".
 - `category`:
-  - `technical_skill`: languages, frameworks, technical concepts and methods
-  - `tool`: specific products, platforms, databases, cloud providers, software
+  - `technology`: a specific NAMED language, framework, library, database, platform, cloud provider, or software product (Python, React, PostgreSQL, AWS, Docker, Excel, Figma). Also named families with a standard name: SQL, LLMs.
+  - `concept`: a practice, method, or technical area that isn't one named product (CI/CD, debugging, system design, data visualization, API integration, technical documentation, machine learning, artificial intelligence)
+  - Test: could a resume line name it as one specific thing? If not, it is `concept` — even when the JD adds "tools" or "technologies". "AI tools" -> concept. "Data visualization tools" -> concept. "OSINT tools" -> concept. "Tableau" -> technology.
   - `domain_knowledge`: industry or business-area knowledge
   - `soft_skill`: interpersonal or communication skills
   - `credential`: degrees, certifications, licenses

@@ -15,7 +15,8 @@ Return exactly one decision for EVERY requirement id, in the same order.
 
 ## Honesty rules (most important)
 
-- For a named technology (language, framework, database, platform, product), `covered` and `underemphasized` REQUIRE the evidence line to literally name that technology or a standard alias of it. If no line names it, the answer is `transferable` or `gap` — never `covered`.
+- For a `technology` requirement, `covered` and `underemphasized` REQUIRE the evidence line to literally name that technology or a standard alias of it. Search ALL lines, including project lines. If no line names it, the answer is `transferable` or `gap` — never `covered`.
+- For a `concept` requirement, judge what the line actually shows: "standardizing documentation" shows technical documentation; "built dashboards" shows data visualization. Merely using a related tool is not enough.
 - Similar technologies are NOT the same: Firestore is not PostgreSQL, CloudFront is not Docker, a CI/CD pipeline does not imply Docker. At most `transferable`.
 - `transferable` needs a genuinely close skill: same kind of tool or concept. Python is not transferable to Java; "used ChatGPT" is not machine learning experience. A loosely related line is a `gap`.
 - If no line mentions the skill or anything close to it, the answer is `gap`. Do not reach for the nearest line.
@@ -26,7 +27,7 @@ Read the full evidence line, not just its skill tags; the tags can be incomplete
 
 ## Fields
 
-- `evidence_id`: the id of the single STRONGEST supporting line. Prefer experience/project lines over skills/education lines. For `transferable`, the line showing the related skill. Null for `gap`.
+- `evidence_id`: REQUIRED for `covered`, `underemphasized`, and `transferable` — never null for those. The id of the single STRONGEST supporting line. Prefer experience/project lines over skills/education lines. For `transferable`, the line showing the related skill. Null only for `gap`.
 - `rationale`: one specific sentence, at most 25 words, saying what the line shows (or what is missing).
 - For requirements in an any_of_group, judge each one on its own; grouping is handled separately.
 

@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 _SERVER_ERROR_STATUS = {500, 503}
 _SERVER_ERROR_BACKOFF_SECONDS = (2.0, 5.0)  # waits before retry 1 and retry 2
 _MAX_RATE_LIMIT_WAIT_SECONDS = 10.0  # longer than this -> fail fast instead of waiting
+_SEED = 7
 
 
 def _status_code(e: Exception) -> int | None:
@@ -69,6 +70,9 @@ class GeminiClient(LLMClient):
                     input=prompt,
                     response_format=response_format,
                     store=False,  # don't retain resumes server-side
+                    # Fixed seed: same JD/resume -> (best-effort) same output. Temperature is left
+                    # at the default; Google advises against lowering it for Gemini 3-family models.
+                    generation_config={"seed": _SEED},
                     timeout=self._timeout_seconds,
                 )
                 # Empty output becomes a validation error upstream, which triggers the JSON retry.

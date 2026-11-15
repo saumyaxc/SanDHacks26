@@ -31,7 +31,7 @@ def _req(
         "id": id,
         "skill": skill,
         "canonical_skill": canonical or skill,
-        "category": "tool",
+        "category": "technology",
         "priority": priority,
         "years_required": years,
         "any_of_group": group,
@@ -295,8 +295,43 @@ def test_match_downgrades_tool_the_line_does_not_name():
     inp = _match_input([_req("req-1", "Docker")], [ev])
     m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
     assert m.bucket == Bucket.TRANSFERABLE
-    assert "doesn't name docker" in m.rationale
+    assert "No line names Docker" in m.rationale
     assert m.evidence_quote == ev["line"]  # evidence is kept
+
+
+def test_match_finds_naming_line_the_llm_missed():
+    skills = _ev("ev-1", "Skills: Python, JavaScript", [("JavaScript", "javascript")], "skills")
+    project = _ev("ev-2", "Built a JavaScript frontend for a journaling app", [], "project")
+    inp = _match_input([_req("req-1", "JavaScript")], [skills, project])
+    m = _run_match(inp, [_decision("req-1", "transferable", "ev-1")]).matches[0]
+    assert (m.bucket, m.evidence_id) == (Bucket.COVERED, "ev-2")
+
+
+def test_match_prefers_experience_line_over_skills_line():
+    inp = _match_input([_req("req-1", "Python")], [EV_SKILLS, EV_BULLET])
+    m = _run_match(inp, [_decision("req-1", "underemphasized", "ev-2")]).matches[0]
+    assert (m.bucket, m.evidence_id) == (Bucket.COVERED, "ev-1")
+
+
+def test_match_overrides_gap_when_skills_list_names_it():
+    inp = _match_input([_req("req-1", "Go")], [EV_SKILLS])
+    m = _run_match(inp, [_decision("req-1", "gap")]).matches[0]
+    assert (m.bucket, m.evidence_id) == (Bucket.UNDEREMPHASIZED, "ev-2")
+    assert "listed in your skills" in m.rationale
+
+
+def test_match_concepts_skip_name_check():
+    ev = _ev("ev-1", "Standardized architecture docs with PlantUML diagrams", [], "experience")
+    inp = _match_input([_req("req-1", "Technical Documentation")], [ev])
+    inp.requirements.requirements[0].category = "concept"
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.COVERED
+
+
+def test_match_c_does_not_match_cpp():
+    inp = _match_input([_req("req-1", "C")], [_ev("ev-1", "Wrote a renderer in C++", [], "experience")])
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.TRANSFERABLE
 
 
 @pytest.mark.parametrize(
