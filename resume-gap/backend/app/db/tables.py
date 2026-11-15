@@ -1,0 +1,19 @@
+"""Postgres schema for neon_repo. Applied at startup with IF NOT EXISTS (no migration tool).
+
+The whole AnalysisResult lives in `result` (jsonb); the other columns exist only for lookups.
+Raw JD/resume text is never stored — only the extracted, verified lines inside `result`.
+"""
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS analyses (
+    id          text PRIMARY KEY,
+    session_id  text NOT NULL,
+    input_hash  text NOT NULL,
+    created_at  timestamptz NOT NULL,
+    result      jsonb NOT NULL,
+    UNIQUE (session_id, input_hash)
+);
+
+CREATE INDEX IF NOT EXISTS analyses_session_created_idx
+    ON analyses (session_id, created_at DESC);
+"""

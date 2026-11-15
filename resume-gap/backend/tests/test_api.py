@@ -151,3 +151,13 @@ def test_history_lists_summaries_newest_first_and_gets_by_id(client):
     assert client.get(f"/api/analyses/{old['id']}").json()["id"] == old["id"]
     assert client.get("/api/analyses/nope").status_code == 404
     assert client.get("/api/sessions/nobody/analyses").json() == []
+
+
+def test_gap_ranking_endpoint(client):
+    _use(FakeLLMClient())
+    assert client.get("/api/sessions/s1/gaps").json() == {"analysis_count": 0, "gaps": []}
+    client.post("/api/analyze", json=_body())
+    ranking = client.get("/api/sessions/s1/gaps").json()
+    # Fake analysis: kubernetes (required gap) = 2, aws (preferred transferable) = 0.5
+    assert ranking["analysis_count"] == 1
+    assert [(g["canonical_skill"], g["score"]) for g in ranking["gaps"]] == [("kubernetes", 2.0), ("aws", 0.5)]

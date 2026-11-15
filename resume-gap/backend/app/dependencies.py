@@ -30,7 +30,12 @@ def get_llm() -> LLMClient:
 
 @lru_cache
 def get_repo() -> AnalysisRepository:
-    # One shared instance: the in-memory store lives as long as the process.
+    # One shared instance: owns the connection pool (Neon) or the store itself (memory).
+    database_url = get_settings().database_url.get_secret_value()
+    if database_url:
+        from app.db.neon_repo import NeonRepository  # import here: psycopg only needed with a DB
+
+        return NeonRepository(database_url)
     return MemoryRepository()
 
 

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
     llm_timeout_seconds: float = 30.0
+    # Neon Postgres connection string. Empty -> in-memory storage (lost on restart).
+    database_url: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def _require_key_for_gemini(self) -> "Settings":

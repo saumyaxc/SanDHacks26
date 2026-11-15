@@ -368,3 +368,31 @@ class AnalysisSummary(_Base):
             company=result.requirements.company,
             bucket_counts=counts,
         )
+
+
+# ---------- Cross-JD gap ranking ----------
+
+
+class GapOccurrence(_Base):
+    analysis_id: str
+    role_title: str
+    company: str | None
+    bucket: Bucket  # gap or transferable
+    priority: Priority
+
+
+class RankedGap(_Base):
+    canonical_skill: str
+    skill: str  # display name: the most common way JDs wrote it
+    category: SkillCategory
+    score: float  # higher = worth learning first
+    job_count: int
+    required_count: int
+    occurrences: list[GapOccurrence]  # newest first
+
+
+class GapRanking(_Base):
+    """Built by services/gap_ranking.py from a session's analyses (not an LLM schema)."""
+
+    analysis_count: int  # distinct jobs considered
+    gaps: list[RankedGap]

@@ -3,14 +3,17 @@ import {
   analyze,
   ApiError,
   getAnalysis,
+  getGapRanking,
   getSessionId,
   listAnalyses,
   MAX_INPUT_CHARS,
   type AnalysisResult,
   type AnalysisSummary,
+  type GapRanking,
 } from './api'
 import { History } from './components/History'
 import { Results } from './components/Results'
+import { TopGaps } from './components/TopGaps'
 import './App.css'
 
 const sessionId = getSessionId()
@@ -23,22 +26,23 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisSummary[]>([])
+  const [ranking, setRanking] = useState<GapRanking | null>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
-  async function refreshHistory() {
-    try {
-      setHistory(await listAnalyses(sessionId))
-    } catch {
-      // History is a convenience; the main flow still works without it.
-    }
+  // History and ranking are conveniences: if they fail, the main flow still works.
+  function loadSidebar(isCancelled: () => boolean = () => false) {
+    listAnalyses(sessionId)
+      .then((items) => !isCancelled() && setHistory(items))
+      .catch(() => {})
+    getGapRanking(sessionId)
+      .then((r) => !isCancelled() && setRanking(r))
+      .catch(() => {})
   }
 
   // Load this browser's past analyses once (fetch = external system, so an effect is right).
   useEffect(() => {
     let cancelled = false
-    listAnalyses(sessionId)
-      .then((items) => !cancelled && setHistory(items))
-      .catch(() => {}) // history is a convenience; the main flow works without it
+    loadSidebar(() => cancelled)
     return () => {
       cancelled = true
     }
@@ -63,7 +67,7 @@ export default function App() {
     setLoading(true)
     try {
       showResult(await analyze(sessionId, jd, resume))
-      void refreshHistory()
+      loadSidebar()
     } catch (err) {
       setError(describe(err))
     } finally {
@@ -107,6 +111,7 @@ export default function App() {
               </p>
             )}
           </form>
+          <TopGaps ranking={ranking} onOpen={onSelectHistory} />
           <History items={history} activeId={result?.id ?? null} onSelect={onSelectHistory} />
         </aside>
 

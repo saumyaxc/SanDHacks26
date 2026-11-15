@@ -408,3 +408,51 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+
+/* ---------- top gaps ---------- */
+
+.top-gaps h3 {
+  font-size: 0.95rem;
+}
+.top-gaps > .muted {
+  margin: 2px 0 8px;
+}
+.top-gaps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gap-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.gap-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+.gap-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--gap-bg);
+  overflow: hidden;
+}
+.gap-bar span {
+  display: block;
+  height: 100%;
+  background: var(--gap);
+}

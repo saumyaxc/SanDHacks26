@@ -78,6 +78,27 @@ export interface AnalysisSummary {
   bucket_counts: Record<Bucket, number>
 }
 
+export interface RankedGap {
+  canonical_skill: string
+  skill: string
+  category: SkillCategory
+  score: number
+  job_count: number
+  required_count: number
+  occurrences: {
+    analysis_id: string
+    role_title: string
+    company: string | null
+    bucket: Bucket
+    priority: Priority
+  }[] // newest first
+}
+
+export interface GapRanking {
+  analysis_count: number
+  gaps: RankedGap[]
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -123,6 +144,10 @@ export function analyze(sessionId: string, jdText: string, resumeText: string): 
 
 export function listAnalyses(sessionId: string): Promise<AnalysisSummary[]> {
   return request(`/sessions/${encodeURIComponent(sessionId)}/analyses`)
+}
+
+export function getGapRanking(sessionId: string): Promise<GapRanking> {
+  return request(`/sessions/${encodeURIComponent(sessionId)}/gaps`)
 }
 
 export function getAnalysis(id: string): Promise<AnalysisResult> {
