@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from .base import LLMClient, LLMError
 
-# One self-consistent example: every bucket appears, and every quote is an exact evidence line.
+# One self-consistent example: every bucket appears, and every evidence_id exists.
 DEFAULT_RESPONSES: dict[str, str] = {
     "RequirementsExtraction": json.dumps(
         {
@@ -107,42 +107,37 @@ DEFAULT_RESPONSES: dict[str, str] = {
             ]
         }
     ),
-    "MatchResult": json.dumps(
+    "MatchDecisions": json.dumps(
         {
-            "matches": [
+            "decisions": [
                 {
                     "requirement_id": "req-1",
                     "bucket": "covered",
                     "evidence_id": "ev-1",
-                    "evidence_quote": "Built REST APIs in Python and FastAPI serving 10k daily users",
                     "rationale": "Python used directly in production work.",
                 },
                 {
                     "requirement_id": "req-2",
                     "bucket": "gap",
                     "evidence_id": None,
-                    "evidence_quote": None,
                     "rationale": "No Kubernetes or container orchestration mentioned.",
                 },
                 {
                     "requirement_id": "req-3",
                     "bucket": "transferable",
                     "evidence_id": "ev-2",
-                    "evidence_quote": "Deployed services to Google Cloud Run with Docker",
                     "rationale": "GCP deployment experience transfers to AWS.",
                 },
                 {
                     "requirement_id": "req-4",
                     "bucket": "underemphasized",
                     "evidence_id": "ev-3",
-                    "evidence_quote": "Skills: Python, Postgres, Docker, Git",
                     "rationale": "Postgres is only listed in skills, never shown in use.",
                 },
                 {
                     "requirement_id": "req-5",
                     "bucket": "covered",
                     "evidence_id": "ev-4",
-                    "evidence_quote": "Presented quarterly project results to a 40-person engineering org",
                     "rationale": "Regular presentations to a large audience.",
                 },
             ]

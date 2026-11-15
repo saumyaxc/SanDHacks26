@@ -2,17 +2,21 @@ import json
 
 import pytest
 
-from app.domain.enums import Priority
+from app.domain.enums import Bucket, Priority
 from app.domain.quotes import quote_in_text
 from app.domain.schemas import (
     EvidenceExtraction,
     ExtractEvidenceInput,
     ExtractRequirementsInput,
+    MatchInput,
+    MatchResult,
     RequirementsExtraction,
 )
+from app.llm.base import LLMError
 from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
 from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
+from app.pipeline.match import match
 
 
 def _req(
@@ -228,8 +232,148 @@ def test_evidence_fails_if_nothing_is_verbatim():
         _run_evidence([_ev("a", "Invented line")], RESUME)
 
 
-def test_default_fake_evidence_lines_are_consistent_with_matches():
+def _default_resume() -> str:
     evidence = json.loads(DEFAULT_RESPONSES["EvidenceExtraction"])
-    resume = "\n".join(i["line"] for i in evidence["items"])
-    result = extract_evidence(ExtractEvidenceInput(resume_text=resume), FakeLLMClient())
+    return "\n".join(i["line"] for i in evidence["items"])
+
+
+def test_default_fake_evidence_lines_survive_verbatim_check():
+    result = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), FakeLLMClient())
     assert len(result.items) == 4
+
+
+# ---------- Stage 3: match ----------
+
+
+def _match_input(requirements: list[dict], evidence_items: list[dict]) -> MatchInput:
+    return MatchInput(
+        requirements=RequirementsExtraction(role_title="Eng", requirements=requirements),
+        evidence=EvidenceExtraction(items=evidence_items),
+    )
+
+
+def _decision(req_id: str, bucket: str, ev_id: str | None = None) -> dict:
+    return {"requirement_id": req_id, "bucket": bucket, "evidence_id": ev_id, "rationale": "r"}
+
+
+def _run_match(inp: MatchInput, decisions: list[dict] | list[list[dict]]) -> MatchResult:
+    if decisions and isinstance(decisions[0], list):  # queued attempts
+        responses = [json.dumps({"decisions": d}) for d in decisions]
+    else:
+        responses = json.dumps({"decisions": decisions})
+    return match(inp, FakeLLMClient({"MatchDecisions": responses}))
+
+
+EV_BULLET = _ev("ev-1", "Built REST APIs in Python", [("Python", "python")], "experience")
+EV_SKILLS = _ev("ev-2", "Skills: Python, Go", [("Python", "python"), ("Go", "go")], "skills")
+EV_COURSE = _ev("ev-3", "Coursework: Operating Systems", [("Operating Systems", "operating systems")], "education")
+EV_DEGREE = _ev("ev-4", "BS, Computer Science", [("Computer Science", "computer science degree")], "education")
+
+
+def test_match_copies_quote_from_evidence_not_llm():
+    inp = _match_input([_req("req-1", "Python")], [EV_BULLET])
+    result = _run_match(inp, [_decision("req-1", "covered", "ev-1")])
+    m = result.matches[0]
+    assert (m.bucket, m.evidence_id, m.evidence_quote) == (Bucket.COVERED, "ev-1", "Built REST APIs in Python")
+
+
+def test_match_downgrades_covered_on_skills_list_or_coursework():
+    inp = _match_input(
+        [_req("req-1", "Go"), _req("req-2", "Operating Systems"), _req("req-3", "CS degree", "computer science degree")],
+        [EV_SKILLS, EV_COURSE, EV_DEGREE],
+    )
+    inp.requirements.requirements[2].category = "credential"
+    result = _run_match(
+        inp,
+        [_decision("req-1", "covered", "ev-2"), _decision("req-2", "covered", "ev-3"), _decision("req-3", "covered", "ev-4")],
+    )
+    assert [m.bucket for m in result.matches] == [Bucket.UNDEREMPHASIZED, Bucket.UNDEREMPHASIZED, Bucket.COVERED]
+
+
+def test_match_downgrades_tool_the_line_does_not_name():
+    ev = _ev("ev-1", "Built a CI/CD pipeline with GitHub Actions", [("CI/CD", "ci/cd")], "experience")
+    inp = _match_input([_req("req-1", "Docker")], [ev])
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.TRANSFERABLE
+    assert "doesn't name docker" in m.rationale
+    assert m.evidence_quote == ev["line"]  # evidence is kept
+
+
+@pytest.mark.parametrize(
+    ("skill", "line"),
+    [
+        ("PostgreSQL", "Stored events in Postgres"),  # alias in text
+        ("Large Language Models", "Integrated a locally hosted Mistral LLM"),  # alias "llm"
+        ("C++", "Wrote a renderer in C++ and OpenGL"),  # punctuation in term
+        ("AWS", "Deployed with AWS CloudFront"),  # product of platform
+    ],
+)
+def test_match_keeps_covered_when_line_names_skill(skill, line):
+    inp = _match_input([_req("req-1", skill)], [_ev("ev-1", line, [], "experience")])
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.COVERED
+
+
+def test_match_name_check_is_whole_word():
+    inp = _match_input([_req("req-1", "Go")], [_ev("ev-1", "Ongoing work on going concerns", [], "experience")])
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.TRANSFERABLE
+
+
+def test_match_soft_skills_skip_name_check():
+    inp = _match_input([_req("req-1", "Teamwork")], [_ev("ev-1", "Built an app with three classmates", [], "project")])
+    inp.requirements.requirements[0].category = "soft_skill"
+    m = _run_match(inp, [_decision("req-1", "covered", "ev-1")]).matches[0]
+    assert m.bucket == Bucket.COVERED
+
+
+def test_match_marks_group_members_satisfied_by_best_member():
+    inp = _match_input(
+        [
+            _req("req-1", "JavaScript", group="group-1"),
+            _req("req-2", "TypeScript", group="group-1"),
+            _req("req-3", "Python", group="group-1"),
+            _req("req-4", "Kubernetes"),
+        ],
+        [EV_BULLET],
+    )
+    result = _run_match(
+        inp,
+        [
+            _decision("req-1", "gap"),
+            _decision("req-2", "transferable", "ev-1"),
+            _decision("req-3", "covered", "ev-1"),
+            _decision("req-4", "gap"),
+        ],
+    )
+    assert [m.satisfied_by for m in result.matches] == ["req-3", "req-3", None, None]
+
+
+def test_match_retries_on_unknown_evidence_id_then_succeeds():
+    inp = _match_input([_req("req-1", "Python")], [EV_BULLET])
+    result = _run_match(
+        inp,
+        [[_decision("req-1", "covered", "ev-99")], [_decision("req-1", "covered", "ev-1")]],
+    )
+    assert result.matches[0].evidence_id == "ev-1"
+
+
+def test_match_fails_when_requirement_missing_twice():
+    inp = _match_input([_req("req-1", "Python"), _req("req-2", "Go")], [EV_BULLET])
+    with pytest.raises(LLMError):
+        _run_match(inp, [[_decision("req-1", "gap")], [_decision("req-1", "gap")]])
+
+
+def test_match_with_default_fake_pipeline():
+    llm = FakeLLMClient()
+    reqs = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    evidence = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), llm)
+    result = match(MatchInput(requirements=reqs, evidence=evidence), llm)
+    assert [m.bucket for m in result.matches] == [
+        Bucket.COVERED,
+        Bucket.GAP,
+        Bucket.TRANSFERABLE,
+        Bucket.UNDEREMPHASIZED,
+        Bucket.COVERED,
+    ]
+    assert all(m.evidence_quote in _default_resume() for m in result.matches if m.evidence_quote)

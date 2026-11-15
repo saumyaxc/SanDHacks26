@@ -8,7 +8,7 @@ triggers the client's retry.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
 from .enums import Bucket, Priority, ResourceType, ResumeSection, SkillCategory
 from .skills import normalize_skill
@@ -114,17 +114,62 @@ class MatchInput(_Base):
     evidence: EvidenceExtraction
 
 
+class MatchDecision(_Base):
+    requirement_id: str
+    bucket: Bucket
+    evidence_id: str | None = None  # strongest supporting line; null for gap
+    rationale: str
+
+    @model_validator(mode="after")
+    def _validate(self) -> "MatchDecision":
+        if self.bucket == Bucket.GAP:
+            self.evidence_id = None  # a gap has no evidence by definition
+        elif not self.evidence_id:
+            raise ValueError(f"{self.requirement_id}: bucket '{self.bucket}' requires evidence_id")
+        return self
+
+
+class MatchDecisions(_Base):
+    """[LLM OUTPUT] The LLM picks evidence by id only; code copies the quote.
+
+    Validation context (passed by pipeline/match.py):
+      requirement_ids: every requirement must get exactly one decision
+      evidence_ids: every evidence_id must exist
+    """
+
+    decisions: list[MatchDecision]
+
+    @model_validator(mode="after")
+    def _validate(self, info: ValidationInfo) -> "MatchDecisions":
+        ctx = info.context or {}
+        got = [d.requirement_id for d in self.decisions]
+        _check_unique_ids(got, "requirement")
+
+        if (expected := ctx.get("requirement_ids")) is not None:
+            missing = sorted(set(expected) - set(got))
+            unknown = sorted(set(got) - set(expected))
+            if missing or unknown:
+                raise ValueError(f"decisions must cover each requirement once; missing={missing} unknown={unknown}")
+
+        if (evidence_ids := ctx.get("evidence_ids")) is not None:
+            bad = sorted({d.evidence_id for d in self.decisions if d.evidence_id and d.evidence_id not in evidence_ids})
+            if bad:
+                raise ValueError(f"unknown evidence ids: {bad}")
+        return self
+
+
 class RequirementMatch(_Base):
     requirement_id: str
     bucket: Bucket
     evidence_id: str | None = None
-    evidence_quote: str | None = None  # exact resume line; required unless bucket == gap
+    evidence_quote: str | None = None  # copied by code from the evidence line; never LLM-written
     rationale: str
+    # Set when another member of this requirement's any_of_group is covered/underemphasized.
+    satisfied_by: str | None = None
 
     @model_validator(mode="after")
     def _validate(self) -> "RequirementMatch":
         if self.bucket == Bucket.GAP:
-            # A gap has no evidence by definition; drop anything the LLM invented.
             self.evidence_id = None
             self.evidence_quote = None
         elif not self.evidence_id or not self.evidence_quote:
@@ -135,8 +180,7 @@ class RequirementMatch(_Base):
 
 
 class MatchResult(_Base):
-    """[LLM OUTPUT] Verbatim-quote and one-match-per-requirement checks
-    need the inputs, so they live in pipeline/match.py, not here."""
+    """Final stage-3 output, built in pipeline/match.py (not an LLM schema)."""
 
     matches: list[RequirementMatch]
 

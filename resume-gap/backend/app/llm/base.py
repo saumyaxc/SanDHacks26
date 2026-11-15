@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
@@ -23,8 +24,13 @@ class LLMRateLimitError(LLMError):
 
 
 class LLMClient(ABC):
-    def complete_json[T: BaseModel](self, prompt: str, schema: type[T]) -> T:
+    def complete_json[T: BaseModel](
+        self, prompt: str, schema: type[T], context: dict[str, Any] | None = None
+    ) -> T:
         """Call the model and return a validated `schema` instance.
+
+        `context` is passed to Pydantic validators (e.g. the set of valid ids), so
+        input-dependent checks also trigger the retry.
 
         On invalid JSON or a failed validator, retries once with the error
         appended to the prompt. Raises LLMError if the retry also fails.
@@ -35,7 +41,7 @@ class LLMClient(ABC):
         for attempt in (1, 2):
             raw = self._generate(attempt_prompt, schema)
             try:
-                return schema.model_validate_json(raw)
+                return schema.model_validate_json(raw, context=context)
             except ValidationError as e:
                 error = e
                 log.warning("%s attempt %d invalid: %s", schema.__name__, attempt, e)
