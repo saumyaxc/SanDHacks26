@@ -29,6 +29,18 @@ uvicorn app.main:app --reload
 `LLM_PROVIDER=fake` (the default) returns canned results with no API key. It only works if the resume
 contains the canned evidence lines; use `LLM_PROVIDER=gemini` for real resumes.
 
+## Run the frontend
+
+In a second terminal, with the API running on port 8000:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The Vite dev server proxies `/api` to the backend.
+
 ## Run tests
 
 ```bash

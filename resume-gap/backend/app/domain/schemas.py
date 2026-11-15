@@ -253,37 +253,54 @@ class RecommendInput(_Base):
     matches: MatchResult
 
 
-class GapRecommendation(_Base):
-    requirement_id: str
-    project_title: str
-    project_description: str  # weekend-scoped
+MAX_PROJECTS_PER_GAP = 3
+
+
+class ProjectIdea(_Base):
+    title: str
+    description: str  # what to build and what it demonstrates
     estimated_hours: int
-    resource_type: ResourceType
-    resource_suggestion: str  # e.g. "Official Kubernetes 'Hello Minikube' tutorial"; no URLs
 
     @model_validator(mode="after")
-    def _validate(self) -> "GapRecommendation":
+    def _validate(self) -> "ProjectIdea":
         if not MIN_PROJECT_HOURS <= self.estimated_hours <= MAX_PROJECT_HOURS:
             raise ValueError(
-                f"{self.requirement_id}: estimated_hours must be {MIN_PROJECT_HOURS}-{MAX_PROJECT_HOURS} (a weekend)"
+                f"'{self.title}': estimated_hours must be {MIN_PROJECT_HOURS}-{MAX_PROJECT_HOURS} (a weekend)"
             )
-        lowered = self.resource_suggestion.lower()
-        if "http" in lowered or "www." in lowered:
-            raise ValueError(f"{self.requirement_id}: resource_suggestion must name a resource, not a URL")
         return self
 
 
-class GapRecommendations(_Base):
-    """[LLM OUTPUT] Also the final stage-5 output (code only reorders it).
+def _check_projects(requirement_id: str, projects: list[ProjectIdea]) -> None:
+    if not 1 <= len(projects) <= MAX_PROJECTS_PER_GAP:
+        raise ValueError(f"{requirement_id}: give 1-{MAX_PROJECTS_PER_GAP} projects, got {len(projects)}")
+
+
+class GapRecommendationDraft(_Base):
+    requirement_id: str
+    projects: list[ProjectIdea]
+    resource_type: ResourceType
+    resource_title: str  # e.g. "Kubernetes 'Hello Minikube' tutorial"
+    resource_url: str | None = None  # LLM's proposed official URL; unverified, null if unsure
+
+    @model_validator(mode="after")
+    def _validate(self) -> "GapRecommendationDraft":
+        _check_projects(self.requirement_id, self.projects)
+        if self.resource_url is not None and not self.resource_url.startswith("https://"):
+            raise ValueError(f"{self.requirement_id}: resource_url must be an https:// URL or null")
+        return self
+
+
+class GapRecommendationDrafts(_Base):
+    """[LLM OUTPUT] URLs here are unverified; pipeline/recommend_gaps.py checks them.
 
     Validation context (passed by pipeline/recommend_gaps.py):
       requirement_ids: every target requirement must get exactly one recommendation
     """
 
-    recommendations: list[GapRecommendation]
+    recommendations: list[GapRecommendationDraft]
 
     @model_validator(mode="after")
-    def _validate(self, info: ValidationInfo) -> "GapRecommendations":
+    def _validate(self, info: ValidationInfo) -> "GapRecommendationDrafts":
         got = [r.requirement_id for r in self.recommendations]
         _check_unique_ids(got, "requirement")
         if (expected := (info.context or {}).get("requirement_ids")) is not None:
@@ -292,6 +309,22 @@ class GapRecommendations(_Base):
             if missing or unknown:
                 raise ValueError(f"need one recommendation per listed requirement; missing={missing} unknown={unknown}")
         return self
+
+
+class GapRecommendation(_Base):
+    requirement_id: str
+    projects: list[ProjectIdea]
+    resource_type: ResourceType
+    resource_title: str
+    # Always a working link: the verified official URL, or a web search for resource_title.
+    resource_url: str
+    resource_url_verified: bool  # False -> resource_url is a search link, and the UI says so
+
+
+class GapRecommendations(_Base):
+    """Final stage-5 output, built in pipeline/recommend_gaps.py (not an LLM schema)."""
+
+    recommendations: list[GapRecommendation]
 
 
 # ---------- Whole analysis (API + storage) ----------

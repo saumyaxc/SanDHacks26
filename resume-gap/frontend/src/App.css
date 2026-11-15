@@ -374,3 +374,37 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+
+.project-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.project {
+  padding: 8px 10px;
+  border-left: 3px solid var(--border);
+}
+.project-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.project-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.project p {
+  margin: 4px 0 0;
+}
+.resource {
+  margin-top: 12px !important;
+}
+.resource a {
+  color: var(--accent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}

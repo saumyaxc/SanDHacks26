@@ -1,4 +1,4 @@
-"""The only place that decides which LLM client and which repository are used.
+"""The only place that decides which LLM client, repository, and link checker are used.
 
 Routes depend on these functions via FastAPI's Depends; tests swap them with
 app.dependency_overrides.
@@ -12,6 +12,8 @@ from app.db.memory_repo import MemoryRepository
 from app.llm.base import LLMClient
 from app.llm.fake_client import FakeLLMClient
 from app.llm.gemini_client import GeminiClient
+from app.pipeline.recommend_gaps import UrlChecker
+from app.services.link_check import url_is_live
 
 
 @lru_cache
@@ -30,3 +32,7 @@ def get_llm() -> LLMClient:
 def get_repo() -> AnalysisRepository:
     # One shared instance: the in-memory store lives as long as the process.
     return MemoryRepository()
+
+
+def get_url_checker() -> UrlChecker:
+    return url_is_live

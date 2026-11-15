@@ -29,6 +29,7 @@ from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 from app.pipeline.match import match
 from app.pipeline.recommend_gaps import recommend_gaps
+from app.services.link_check import url_is_live
 from app.pipeline.suggest_rewrites import suggest_rewrites
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
@@ -72,7 +73,9 @@ def main() -> None:
             result = match(MatchInput(requirements=reqs, evidence=evidence), llm)
             if args.full:
                 rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=result), llm)
-                recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=result), llm)
+                recs = recommend_gaps(
+                    RecommendInput(requirements=reqs, evidence=evidence, matches=result), llm, url_is_live
+                )
         except LLMError as e:
             print(f"== {jd_path.name}  FAILED: {e}\n")
             continue
@@ -107,9 +110,11 @@ def main() -> None:
         print(f"\n   recommendations ({len(recs.recommendations)})")
         for rec in recs.recommendations:
             r = req_by_id[rec.requirement_id]
-            print(f"  {r.id:<7}{r.canonical_skill}: {rec.project_title} ({rec.estimated_hours}h)")
-            print(f"  {'':<7}{rec.project_description}")
-            print(f"  {'':<7}[{rec.resource_type}] {rec.resource_suggestion}")
+            print(f"  {r.id:<7}{r.canonical_skill}")
+            for p in rec.projects:
+                print(f"  {'':<7}- {p.title} ({p.estimated_hours}h): {p.description}")
+            mark = "VERIFIED" if rec.resource_url_verified else "search"
+            print(f"  {'':<7}[{rec.resource_type}] {rec.resource_title}  ({mark}) {rec.resource_url}")
         print()
 
 

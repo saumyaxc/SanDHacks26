@@ -155,24 +155,39 @@ DEFAULT_RESPONSES: dict[str, str] = {
             ]
         }
     ),
-    "GapRecommendations": json.dumps(
+    "GapRecommendationDrafts": json.dumps(
         {
             "recommendations": [
                 {
                     "requirement_id": "req-2",
-                    "project_title": "Run your FastAPI app on local Kubernetes",
-                    "project_description": "Write a Deployment and Service manifest for an existing API, run it on minikube, and add a readiness probe.",
-                    "estimated_hours": 10,
+                    "projects": [
+                        {
+                            "title": "Run your FastAPI app on local Kubernetes",
+                            "description": "Write a Deployment and Service manifest for an existing API, run it on minikube, and add a readiness probe.",
+                            "estimated_hours": 6,
+                        },
+                        {
+                            "title": "Zero-downtime deploys with rolling updates",
+                            "description": "Ship two versions of the API with a rolling update and a ConfigMap, and document how you rolled back a bad release.",
+                            "estimated_hours": 12,
+                        },
+                    ],
                     "resource_type": "tutorial",
-                    "resource_suggestion": "Official Kubernetes 'Hello Minikube' tutorial",
+                    "resource_title": "Kubernetes 'Hello Minikube' tutorial",
+                    "resource_url": "https://kubernetes.io/docs/tutorials/hello-minikube/",
                 },
                 {
                     "requirement_id": "req-3",
-                    "project_title": "Port a Cloud Run service to AWS",
-                    "project_description": "Deploy the same Docker image to AWS App Runner and document the differences from Cloud Run.",
-                    "estimated_hours": 6,
+                    "projects": [
+                        {
+                            "title": "Port a Cloud Run service to AWS",
+                            "description": "Deploy the same Docker image to AWS App Runner and document the differences from Cloud Run.",
+                            "estimated_hours": 6,
+                        }
+                    ],
                     "resource_type": "official_docs",
-                    "resource_suggestion": "AWS App Runner getting-started guide",
+                    "resource_title": "AWS App Runner Developer Guide",
+                    "resource_url": None,
                 },
             ]
         }

@@ -7,6 +7,7 @@
     5 recommend_gaps       ┘ parallel (both only read stages 1-3)
 
 Five LLM calls in three rounds. Any stage's LLMError propagates to the caller.
+`url_is_live` checks resource links in stage 5 (injected so tests never hit the network).
 """
 
 import uuid
@@ -26,11 +27,16 @@ from app.llm.base import LLMClient
 from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 from app.pipeline.match import match
-from app.pipeline.recommend_gaps import recommend_gaps
+from app.pipeline.recommend_gaps import UrlChecker, recommend_gaps
 from app.pipeline.suggest_rewrites import suggest_rewrites
 
 
-def run_analysis(request: AnalysisRequest, llm: LLMClient, known_skills: list[str] | None = None) -> AnalysisResult:
+def run_analysis(
+    request: AnalysisRequest,
+    llm: LLMClient,
+    url_is_live: UrlChecker,
+    known_skills: list[str] | None = None,
+) -> AnalysisResult:
     """`known_skills`: canonical names from past analyses, so new ones reuse the same names."""
     known = known_skills or []
 
@@ -50,7 +56,10 @@ def run_analysis(request: AnalysisRequest, llm: LLMClient, known_skills: list[st
             suggest_rewrites, RewriteInput(requirements=requirements, evidence=evidence, matches=matches), llm
         )
         recs_f = pool.submit(
-            recommend_gaps, RecommendInput(requirements=requirements, evidence=evidence, matches=matches), llm
+            recommend_gaps,
+            RecommendInput(requirements=requirements, evidence=evidence, matches=matches),
+            llm,
+            url_is_live,
         )
         rewrites, recommendations = rewrites_f.result(), recs_f.result()
 

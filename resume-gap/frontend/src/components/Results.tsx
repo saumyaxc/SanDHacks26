@@ -150,7 +150,7 @@ function ProjectsSection({
   return (
     <section className="section">
       <h3>Weekend projects</h3>
-      <p className="muted">One small, finishable project for each gap, built on what you already know.</p>
+      <p className="muted">Pick one per gap. Each is small and finishable, and builds on what you already know.</p>
       {recommendations.length === 0 ? (
         <p className="empty">No gaps to fill. Nice.</p>
       ) : (
@@ -162,19 +162,46 @@ function ProjectsSection({
                 <div className="match-head">
                   <span className="skill">{req?.skill ?? rec.requirement_id}</span>
                   {req && <span className={`badge badge-${req.priority}`}>{req.priority}</span>}
-                  <span className="badge">~{rec.estimated_hours}h</span>
                 </div>
-                <h4>{rec.project_title}</h4>
-                <p>{rec.project_description}</p>
-                <p className="resource">
-                  <span className="badge badge-resource">{RESOURCE_LABEL[rec.resource_type]}</span> {rec.resource_suggestion}
-                </p>
+                <ol className="project-list">
+                  {rec.projects.map((p) => (
+                    <li key={p.title} className="project">
+                      <div className="project-head">
+                        <h4>{p.title}</h4>
+                        <span className="badge">~{p.estimated_hours}h</span>
+                      </div>
+                      <p>{p.description}</p>
+                    </li>
+                  ))}
+                </ol>
+                <ResourceLink rec={rec} />
               </li>
             )
           })}
         </ul>
       )}
     </section>
+  )
+}
+
+function ResourceLink({ rec }: { rec: GapRecommendation }) {
+  const host = rec.resource_url_verified ? new URL(rec.resource_url).hostname.replace(/^www\./, '') : null
+  return (
+    <p className="resource">
+      <span className="badge badge-resource">{RESOURCE_LABEL[rec.resource_type]}</span>
+      <a href={rec.resource_url} target="_blank" rel="noopener noreferrer">
+        {rec.resource_url_verified ? rec.resource_title : `Search: ${rec.resource_title}`}
+      </a>
+      {host ? (
+        <span className="muted small" title="We checked this link loads">
+          {host} ✓
+        </span>
+      ) : (
+        <span className="muted small" title="We couldn't confirm an official link, so this opens a web search">
+          (no checked link)
+        </span>
+      )}
+    </p>
   )
 }
 

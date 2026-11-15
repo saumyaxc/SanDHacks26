@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db.memory_repo import MemoryRepository
-from app.dependencies import get_llm, get_repo
+from app.dependencies import get_llm, get_repo, get_url_checker
 from app.llm.base import LLMError, LLMRateLimitError
 from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
 from app.main import app
@@ -33,6 +33,7 @@ def repo():
 @pytest.fixture
 def client(repo):
     app.dependency_overrides[get_repo] = lambda: repo  # fresh store per test: no cross-test cache hits
+    app.dependency_overrides[get_url_checker] = lambda: (lambda url: True)  # never hit the network
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -67,7 +68,7 @@ def test_analyze_runs_all_stages_with_fake_llm(client):
     assert len(data["rewrites"]["rewrites"]) == 1
     assert len(data["recommendations"]["recommendations"]) == 2
     assert sorted(name for name, _ in llm.calls) == sorted(
-        ["RequirementsExtraction", "EvidenceExtraction", "MatchDecisions", "RewriteDrafts", "GapRecommendations"]
+        ["RequirementsExtraction", "EvidenceExtraction", "MatchDecisions", "RewriteDrafts", "GapRecommendationDrafts"]
     )
 
 
@@ -122,9 +123,9 @@ def test_known_skills_from_session_history_reach_the_pipeline(client, monkeypatc
     seen: list[list[str]] = []
     real = analyze_module.run_analysis
 
-    def spy(request, llm, known_skills=None):
+    def spy(request, llm, url_is_live, known_skills=None):
         seen.append(known_skills)
-        return real(request, llm, known_skills)
+        return real(request, llm, url_is_live, known_skills)
 
     monkeypatch.setattr(analyze_module, "run_analysis", spy)
     _use(FakeLLMClient())

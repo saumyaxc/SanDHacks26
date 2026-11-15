@@ -514,14 +514,17 @@ def test_rewrites_keep_one_per_line():
 # ---------- Stage 5: recommend gaps ----------
 
 
-def _rec(req_id: str, hours: int = 8, resource: str = "Official docs") -> dict:
+def _project(hours: int = 8) -> dict:
+    return {"title": "Build a thing", "description": "Build it.", "estimated_hours": hours}
+
+
+def _rec(req_id: str, projects: list[dict] | None = None, url: str | None = None) -> dict:
     return {
         "requirement_id": req_id,
-        "project_title": "Build a thing",
-        "project_description": "Build it.",
-        "estimated_hours": hours,
+        "projects": projects if projects is not None else [_project()],
         "resource_type": "official_docs",
-        "resource_suggestion": resource,
+        "resource_title": f"{req_id} docs",
+        "resource_url": url,
     }
 
 
@@ -533,9 +536,9 @@ def _recommend_input(reqs: list[dict], matches: list[dict]) -> RecommendInput:
     )
 
 
-def _run_recommend(inp: RecommendInput, attempts: list[list[dict]]):
-    llm = FakeLLMClient({"GapRecommendations": [json.dumps({"recommendations": a}) for a in attempts]})
-    return recommend_gaps(inp, llm), llm
+def _run_recommend(inp: RecommendInput, attempts: list[list[dict]], live_urls: set[str] = frozenset()):
+    llm = FakeLLMClient({"GapRecommendationDrafts": [json.dumps({"recommendations": a}) for a in attempts]})
+    return recommend_gaps(inp, llm, lambda url: url in live_urls), llm
 
 
 def _gap_scenario() -> RecommendInput:
@@ -577,8 +580,10 @@ def test_recommend_skips_llm_when_nothing_missing():
     "bad",
     [
         [_rec("req-1"), _rec("req-3")],  # req-6 missing
-        [_rec("req-1"), _rec("req-3"), _rec("req-6", hours=40)],  # not a weekend
-        [_rec("req-1"), _rec("req-3"), _rec("req-6", resource="https://example.com/aws")],  # URL
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", projects=[_project(hours=40)])],  # not a weekend
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", projects=[])],  # no projects
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", projects=[_project()] * 4)],  # too many
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", url="http://example.com/aws")],  # not https
     ],
 )
 def test_recommend_retries_invalid_output(bad):
@@ -587,13 +592,38 @@ def test_recommend_retries_invalid_output(bad):
     assert len(llm.calls) == 2 and len(result.recommendations) == 3
 
 
+def test_recommend_shows_only_verified_urls_and_searches_otherwise():
+    attempts = [
+        [
+            _rec("req-1", url="https://docs.docker.com/get-started/"),  # live
+            _rec("req-3", url="https://kubernetes.io/made-up-page"),  # dead
+            _rec("req-6"),  # model wasn't sure
+        ]
+    ]
+    result, _ = _run_recommend(_gap_scenario(), attempts, live_urls={"https://docs.docker.com/get-started/"})
+    by_id = {r.requirement_id: r for r in result.recommendations}
+    assert (by_id["req-1"].resource_url, by_id["req-1"].resource_url_verified) == (
+        "https://docs.docker.com/get-started/",
+        True,
+    )
+    for rid in ("req-3", "req-6"):
+        assert not by_id[rid].resource_url_verified
+        assert by_id[rid].resource_url == f"https://www.google.com/search?q={rid}+docs"
+
+
+def test_recommend_keeps_multiple_projects():
+    projects = [_project(4), _project(8), _project(14)]
+    result, _ = _run_recommend(_gap_scenario(), [[_rec("req-1", projects), _rec("req-3"), _rec("req-6")]])
+    assert [p.estimated_hours for p in result.recommendations[-1].projects] == [4, 8, 14]
+
+
 def test_full_default_fake_pipeline():
     llm = FakeLLMClient()
     reqs = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
     evidence = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), llm)
     matches = match(MatchInput(requirements=reqs, evidence=evidence), llm)
     rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=matches), llm)
-    recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=matches), llm)
+    recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=matches), llm, lambda _: True)
     assert [r.evidence_id for r in rewrites.rewrites] == ["ev-2"]
     assert rewrites.rewrites[0].original_line in _default_resume()
     assert [r.requirement_id for r in recs.recommendations] == ["req-2", "req-3"]

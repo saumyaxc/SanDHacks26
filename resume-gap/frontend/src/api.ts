@@ -44,13 +44,19 @@ export interface Rewrite {
   reason: string
 }
 
+export interface ProjectIdea {
+  title: string
+  description: string
+  estimated_hours: number
+}
+
 export interface GapRecommendation {
   requirement_id: string
-  project_title: string
-  project_description: string
-  estimated_hours: number
+  projects: ProjectIdea[] // 1-3, smallest first
   resource_type: ResourceType
-  resource_suggestion: string
+  resource_title: string
+  resource_url: string // always works: a checked official link, or a web search
+  resource_url_verified: boolean // false -> resource_url is a search link
 }
 
 export interface AnalysisResult {
