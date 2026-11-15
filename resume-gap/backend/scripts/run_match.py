@@ -3,8 +3,9 @@
 From backend/:
     python -m scripts.run_match                                  # every JD vs the first resume
     python -m scripts.run_match --jd jd1.txt --resume mine.txt   # one pair
+    python -m scripts.run_match --jd jd1.txt --full              # also rewrites + recommendations
 
-Calls: 1 evidence extraction + 2 per JD.
+Calls: 1 evidence extraction + 2 per JD (+ up to 2 more per JD with --full).
 """
 
 import argparse
@@ -15,12 +16,20 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.domain.enums import Bucket
-from app.domain.schemas import ExtractEvidenceInput, ExtractRequirementsInput, MatchInput
+from app.domain.schemas import (
+    ExtractEvidenceInput,
+    ExtractRequirementsInput,
+    MatchInput,
+    RecommendInput,
+    RewriteInput,
+)
 from app.llm.base import LLMError
 from app.llm.gemini_client import GeminiClient
 from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 from app.pipeline.match import match
+from app.pipeline.recommend_gaps import recommend_gaps
+from app.pipeline.suggest_rewrites import suggest_rewrites
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 _QUOTE_WIDTH = 60
@@ -31,6 +40,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jd", action="append", help="JD fixture name (repeatable; default: all)")
     parser.add_argument("--resume", help="resume fixture name (default: first)")
+    parser.add_argument("--full", action="store_true", help="also run rewrites and recommendations")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="  ! %(message)s")
@@ -60,6 +70,9 @@ def main() -> None:
         try:
             reqs = extract_requirements(ExtractRequirementsInput(jd_text=jd_path.read_text(encoding="utf-8")), llm)
             result = match(MatchInput(requirements=reqs, evidence=evidence), llm)
+            if args.full:
+                rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=result), llm)
+                recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=result), llm)
         except LLMError as e:
             print(f"== {jd_path.name}  FAILED: {e}\n")
             continue
@@ -81,6 +94,22 @@ def main() -> None:
                 q = m.evidence_quote
                 print(f"  {'':<12}\"{q if len(q) <= _QUOTE_WIDTH else q[: _QUOTE_WIDTH - 3] + '...'}\"")
             print(f"  {'':<12}{m.rationale}")
+        print()
+
+        if not args.full:
+            continue
+        print(f"   rewrites ({len(rewrites.rewrites)})")
+        for rw in rewrites.rewrites:
+            print(f"  {rw.evidence_id:<7}for {', '.join(rw.requirement_ids)}")
+            print(f"  {'':<7}- {rw.original_line}")
+            print(f"  {'':<7}+ {rw.suggested_line}")
+            print(f"  {'':<7}  {rw.reason}")
+        print(f"\n   recommendations ({len(recs.recommendations)})")
+        for rec in recs.recommendations:
+            r = req_by_id[rec.requirement_id]
+            print(f"  {r.id:<7}{r.canonical_skill}: {rec.project_title} ({rec.estimated_hours}h)")
+            print(f"  {'':<7}{rec.project_description}")
+            print(f"  {'':<7}[{rec.resource_type}] {rec.resource_suggestion}")
         print()
 
 

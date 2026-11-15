@@ -194,31 +194,62 @@ class RewriteInput(_Base):
     matches: MatchResult
 
 
-class Rewrite(_Base):
+class RewriteDraft(_Base):
     evidence_id: str
-    original_line: str  # verbatim resume line being rephrased
     suggested_line: str
     requirement_ids: list[str]  # which requirements this rewrite surfaces
     reason: str
 
+
+class RewriteDrafts(_Base):
+    """[LLM OUTPUT] May be empty if nothing is worth rephrasing. Code copies the original line.
+
+    Validation context (passed by pipeline/suggest_rewrites.py):
+      evidence_ids: lines the LLM was allowed to rewrite
+      requirement_ids: requirements a rewrite may claim to surface
+    """
+
+    rewrites: list[RewriteDraft]
+
     @model_validator(mode="after")
-    def _validate(self) -> "Rewrite":
-        if self.suggested_line == self.original_line:
-            raise ValueError(f"{self.evidence_id}: rewrite is identical to original")
+    def _validate(self, info: ValidationInfo) -> "RewriteDrafts":
+        ctx = info.context or {}
+        if (evidence_ids := ctx.get("evidence_ids")) is not None:
+            bad = sorted({r.evidence_id for r in self.rewrites} - set(evidence_ids))
+            if bad:
+                raise ValueError(f"rewrites may only target the listed lines; unknown evidence ids: {bad}")
+        if (requirement_ids := ctx.get("requirement_ids")) is not None:
+            bad = sorted({i for r in self.rewrites for i in r.requirement_ids} - set(requirement_ids))
+            if bad:
+                raise ValueError(f"unknown or non-target requirement ids: {bad}")
+        if any(not r.requirement_ids for r in self.rewrites):
+            raise ValueError("every rewrite needs at least one requirement_id")
         return self
 
 
+class Rewrite(_Base):
+    evidence_id: str
+    original_line: str  # copied by code from the evidence line; never LLM-written
+    suggested_line: str
+    requirement_ids: list[str]
+    reason: str
+
+
 class RewriteSuggestions(_Base):
-    """[LLM OUTPUT] May be empty if nothing is worth rephrasing."""
+    """Final stage-4 output, built in pipeline/suggest_rewrites.py (not an LLM schema)."""
 
     rewrites: list[Rewrite]
 
 
 # ---------- Stage 5: recommend gap projects ----------
 
+MIN_PROJECT_HOURS = 2
+MAX_PROJECT_HOURS = 16  # "a weekend"
+
 
 class RecommendInput(_Base):
     requirements: RequirementsExtraction
+    evidence: EvidenceExtraction  # so projects can build on the candidate's existing stack
     matches: MatchResult
 
 
@@ -228,13 +259,39 @@ class GapRecommendation(_Base):
     project_description: str  # weekend-scoped
     estimated_hours: int
     resource_type: ResourceType
-    resource_suggestion: str  # e.g. "Official Kubernetes 'Hello Minikube' tutorial"
+    resource_suggestion: str  # e.g. "Official Kubernetes 'Hello Minikube' tutorial"; no URLs
+
+    @model_validator(mode="after")
+    def _validate(self) -> "GapRecommendation":
+        if not MIN_PROJECT_HOURS <= self.estimated_hours <= MAX_PROJECT_HOURS:
+            raise ValueError(
+                f"{self.requirement_id}: estimated_hours must be {MIN_PROJECT_HOURS}-{MAX_PROJECT_HOURS} (a weekend)"
+            )
+        lowered = self.resource_suggestion.lower()
+        if "http" in lowered or "www." in lowered:
+            raise ValueError(f"{self.requirement_id}: resource_suggestion must name a resource, not a URL")
+        return self
 
 
 class GapRecommendations(_Base):
-    """[LLM OUTPUT]"""
+    """[LLM OUTPUT] Also the final stage-5 output (code only reorders it).
+
+    Validation context (passed by pipeline/recommend_gaps.py):
+      requirement_ids: every target requirement must get exactly one recommendation
+    """
 
     recommendations: list[GapRecommendation]
+
+    @model_validator(mode="after")
+    def _validate(self, info: ValidationInfo) -> "GapRecommendations":
+        got = [r.requirement_id for r in self.recommendations]
+        _check_unique_ids(got, "requirement")
+        if (expected := (info.context or {}).get("requirement_ids")) is not None:
+            missing = sorted(set(expected) - set(got))
+            unknown = sorted(set(got) - set(expected))
+            if missing or unknown:
+                raise ValueError(f"need one recommendation per listed requirement; missing={missing} unknown={unknown}")
+        return self
 
 
 # ---------- Whole analysis (API + storage) ----------

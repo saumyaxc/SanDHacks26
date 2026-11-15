@@ -143,12 +143,11 @@ DEFAULT_RESPONSES: dict[str, str] = {
             ]
         }
     ),
-    "RewriteSuggestions": json.dumps(
+    "RewriteDrafts": json.dumps(
         {
             "rewrites": [
                 {
                     "evidence_id": "ev-2",
-                    "original_line": "Deployed services to Google Cloud Run with Docker",
                     "suggested_line": "Containerized services with Docker and deployed them to Google Cloud (Cloud Run)",
                     "requirement_ids": ["req-3"],
                     "reason": "Names the cloud provider explicitly so cloud deployment experience is easy to spot.",

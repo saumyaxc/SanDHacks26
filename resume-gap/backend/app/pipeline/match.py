@@ -12,12 +12,10 @@ Guarantees, enforced here rather than trusted to the LLM:
 - A requirement satisfied by another member of its any_of_group is marked satisfied_by.
 """
 
-import re
 from pathlib import Path
 
 from app.domain.enums import Bucket, ResumeSection, SkillCategory
-from app.domain.quotes import normalize_for_quote
-from app.domain.skills import ALIASES, normalize_skill
+from app.domain.skills import skill_names, text_names_any
 from app.domain.schemas import (
     EvidenceItem,
     MatchDecision,
@@ -111,16 +109,7 @@ def _names_skill(req: Requirement, ev: EvidenceItem) -> bool:
     """True if the evidence line names the requirement's skill by tag, text, or alias."""
     if req.canonical_skill in {s.canonical_skill for s in ev.skills}:
         return True
-    text = normalize_for_quote(ev.line)
-    names = {req.canonical_skill, normalize_skill(req.skill), req.skill.lower()}
-    names |= {alias for alias, canonical in ALIASES.items() if canonical == req.canonical_skill}
-    return any(_contains_term(text, normalize_for_quote(n)) for n in names)
-
-
-def _contains_term(text: str, term: str) -> bool:
-    # Whole-term match: "go" must not match "going", "c" must not match "c++" or "c#";
-    # still works for terms that contain symbols ("c++", "node.js", "ci/cd").
-    return bool(term) and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9+#])", text) is not None
+    return text_names_any(ev.line, skill_names(req.skill, req.canonical_skill))
 
 
 def _format_requirements(requirements: list[Requirement]) -> str:

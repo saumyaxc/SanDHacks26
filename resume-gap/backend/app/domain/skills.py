@@ -14,6 +14,8 @@ Invariants (tested in tests/test_skills.py):
 
 import re
 
+from .quotes import normalize_for_quote
+
 ALIASES: dict[str, str] = {
     # Languages
     "js": "javascript",
@@ -97,3 +99,23 @@ def known_canonical_skills() -> set[str]:
 def skill_vocabulary(extra: list[str]) -> list[str]:
     """Seed vocabulary plus caller-supplied skills (e.g. from past analyses), normalized and sorted."""
     return sorted(known_canonical_skills() | {normalize_skill(s) for s in extra if s.strip()})
+
+
+def skill_names(skill: str, canonical: str) -> set[str]:
+    """Every way a line might name this skill: raw, canonical, and alias spellings."""
+    names = {canonical, normalize_skill(skill), skill.strip().lower()}
+    return names | {alias for alias, value in ALIASES.items() if value == canonical}
+
+
+def text_names_any(text: str, names: set[str]) -> bool:
+    """Whole-term match after quote normalization.
+
+    "go" must not match "going", and "c" must not match "c++" or "c#";
+    terms that contain symbols ("c++", "node.js", "ci/cd") still match.
+    """
+    norm = normalize_for_quote(text)
+    for name in names:
+        term = normalize_for_quote(name)
+        if term and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9+#])", norm):
+            return True
+    return False

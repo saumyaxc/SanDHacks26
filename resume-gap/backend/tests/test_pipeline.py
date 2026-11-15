@@ -10,13 +10,17 @@ from app.domain.schemas import (
     ExtractRequirementsInput,
     MatchInput,
     MatchResult,
+    RecommendInput,
     RequirementsExtraction,
+    RewriteInput,
 )
 from app.llm.base import LLMError
 from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
 from app.pipeline.extract_evidence import extract_evidence
 from app.pipeline.extract_requirements import extract_requirements
 from app.pipeline.match import match
+from app.pipeline.recommend_gaps import recommend_gaps
+from app.pipeline.suggest_rewrites import suggest_rewrites
 
 
 def _req(
@@ -412,3 +416,184 @@ def test_match_with_default_fake_pipeline():
         Bucket.COVERED,
     ]
     assert all(m.evidence_quote in _default_resume() for m in result.matches if m.evidence_quote)
+
+
+# ---------- Stage 4: suggest rewrites ----------
+
+
+def _m(req_id: str, bucket: str, ev: dict | None = None, satisfied_by: str | None = None) -> dict:
+    return {
+        "requirement_id": req_id,
+        "bucket": bucket,
+        "evidence_id": ev["id"] if ev else None,
+        "evidence_quote": ev["line"] if ev else None,
+        "rationale": "r",
+        "satisfied_by": satisfied_by,
+    }
+
+
+EV_CLOUD = _ev("ev-5", "Deployed services to Cloud Run in 3 regions", [("Cloud Run", "gcp")], "experience")
+
+
+def _rewrite_input(reqs: list[dict], evs: list[dict], matches: list[dict]) -> RewriteInput:
+    return RewriteInput(
+        requirements=RequirementsExtraction(role_title="Eng", requirements=reqs),
+        evidence=EvidenceExtraction(items=evs),
+        matches=MatchResult(matches=matches),
+    )
+
+
+def _draft(ev_id: str, line: str, req_ids: list[str]) -> dict:
+    return {"evidence_id": ev_id, "suggested_line": line, "requirement_ids": req_ids, "reason": "why"}
+
+
+def _run_rewrites(inp: RewriteInput, drafts: list[dict] | list[list[dict]]):
+    if drafts and isinstance(drafts[0], list):
+        responses = [json.dumps({"rewrites": d}) for d in drafts]
+    else:
+        responses = json.dumps({"rewrites": drafts})
+    llm = FakeLLMClient({"RewriteDrafts": responses})
+    return suggest_rewrites(inp, llm), llm
+
+
+def test_rewrites_skip_llm_when_nothing_to_surface():
+    inp = _rewrite_input([_req("req-1", "Python")], [EV_BULLET], [_m("req-1", "covered", EV_BULLET)])
+    result, llm = _run_rewrites(inp, [])
+    assert result.rewrites == [] and llm.calls == []
+
+
+def test_rewrites_target_only_experience_lines_not_skills_lists_or_satisfied():
+    reqs = [_req("req-1", "Go"), _req("req-2", "AWS"), _req("req-3", "Rust", group="group-1")]
+    matches = [
+        _m("req-1", "underemphasized", EV_SKILLS),
+        _m("req-2", "transferable", EV_CLOUD),
+        _m("req-3", "transferable", EV_CLOUD, satisfied_by="req-9"),
+    ]
+    inp = _rewrite_input(reqs, [EV_SKILLS, EV_CLOUD], matches)
+    _, llm = _run_rewrites(inp, [])
+    prompt = llm.calls[0][1]
+    assert "ev-5 | experience" in prompt and "req-2" in prompt
+    assert "ev-2 |" not in prompt and "req-3" not in prompt
+
+
+def test_rewrites_copy_original_line_from_evidence():
+    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
+    result, _ = _run_rewrites(inp, [_draft("ev-5", "Deployed services to Google Cloud Run across 3 regions", ["req-1"])])
+    assert result.rewrites[0].original_line == EV_CLOUD["line"]
+
+
+@pytest.mark.parametrize(
+    "suggested",
+    [
+        "Deployed 12 services to Google Cloud Run in 3 regions",  # invented number
+        "Deployed services to AWS and Cloud Run in 3 regions",  # adds the JD technology
+        "deployed services to cloud run in 3 regions",  # no real change
+    ],
+)
+def test_rewrites_drop_dishonest_or_empty_rewrites(suggested):
+    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
+    result, _ = _run_rewrites(inp, [_draft("ev-5", suggested, ["req-1"])])
+    assert result.rewrites == []
+
+
+def test_rewrites_retry_when_llm_targets_unlisted_line():
+    inp = _rewrite_input([_req("req-1", "AWS")], [EV_BULLET, EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
+    good = _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-1"])
+    result, llm = _run_rewrites(inp, [[_draft("ev-1", "Built Python REST APIs", ["req-1"])], [good]])
+    assert len(llm.calls) == 2 and result.rewrites[0].evidence_id == "ev-5"
+
+
+def test_rewrites_keep_one_per_line():
+    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
+    a = _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-1"])
+    b = _draft("ev-5", "Ran services on Google Cloud Run in 3 regions", ["req-1"])
+    result, _ = _run_rewrites(inp, [a, b])
+    assert [r.suggested_line for r in result.rewrites] == [a["suggested_line"]]
+
+
+# ---------- Stage 5: recommend gaps ----------
+
+
+def _rec(req_id: str, hours: int = 8, resource: str = "Official docs") -> dict:
+    return {
+        "requirement_id": req_id,
+        "project_title": "Build a thing",
+        "project_description": "Build it.",
+        "estimated_hours": hours,
+        "resource_type": "official_docs",
+        "resource_suggestion": resource,
+    }
+
+
+def _recommend_input(reqs: list[dict], matches: list[dict]) -> RecommendInput:
+    return RecommendInput(
+        requirements=RequirementsExtraction(role_title="Eng", requirements=reqs),
+        evidence=EvidenceExtraction(items=[EV_BULLET, EV_CLOUD]),
+        matches=MatchResult(matches=matches),
+    )
+
+
+def _run_recommend(inp: RecommendInput, attempts: list[list[dict]]):
+    llm = FakeLLMClient({"GapRecommendations": [json.dumps({"recommendations": a}) for a in attempts]})
+    return recommend_gaps(inp, llm), llm
+
+
+def _gap_scenario() -> RecommendInput:
+    reqs = [
+        _req("req-1", "Docker", priority="preferred"),
+        _req("req-2", "CS degree", "computer science degree"),
+        _req("req-3", "Kubernetes"),
+        _req("req-4", "TypeScript", group="group-1"),
+        _req("req-5", "Python", group="group-1"),
+        _req("req-6", "AWS"),
+    ]
+    reqs[1]["category"] = "credential"
+    matches = [
+        _m("req-1", "gap"),
+        _m("req-2", "gap"),
+        _m("req-3", "gap"),
+        _m("req-4", "gap", satisfied_by="req-5"),
+        _m("req-5", "covered", EV_BULLET),
+        _m("req-6", "transferable", EV_CLOUD),
+    ]
+    return _recommend_input(reqs, matches)
+
+
+def test_recommend_targets_and_orders_required_first():
+    result, llm = _run_recommend(_gap_scenario(), [[_rec("req-1"), _rec("req-6"), _rec("req-3")]])
+    assert [r.requirement_id for r in result.recommendations] == ["req-3", "req-6", "req-1"]
+    prompt = llm.calls[0][1]
+    assert "req-2" not in prompt and "req-4" not in prompt and "req-5" not in prompt  # credential, satisfied, covered
+    assert "python" in prompt  # candidate's existing skills are offered
+
+
+def test_recommend_skips_llm_when_nothing_missing():
+    inp = _recommend_input([_req("req-1", "Python")], [_m("req-1", "covered", EV_BULLET)])
+    result, llm = _run_recommend(inp, [])
+    assert result.recommendations == [] and llm.calls == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [_rec("req-1"), _rec("req-3")],  # req-6 missing
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", hours=40)],  # not a weekend
+        [_rec("req-1"), _rec("req-3"), _rec("req-6", resource="https://example.com/aws")],  # URL
+    ],
+)
+def test_recommend_retries_invalid_output(bad):
+    good = [_rec("req-1"), _rec("req-3"), _rec("req-6")]
+    result, llm = _run_recommend(_gap_scenario(), [bad, good])
+    assert len(llm.calls) == 2 and len(result.recommendations) == 3
+
+
+def test_full_default_fake_pipeline():
+    llm = FakeLLMClient()
+    reqs = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    evidence = extract_evidence(ExtractEvidenceInput(resume_text=_default_resume()), llm)
+    matches = match(MatchInput(requirements=reqs, evidence=evidence), llm)
+    rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=matches), llm)
+    recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=matches), llm)
+    assert [r.evidence_id for r in rewrites.rewrites] == ["ev-2"]
+    assert rewrites.rewrites[0].original_line in _default_resume()
+    assert [r.requirement_id for r in recs.recommendations] == ["req-2", "req-3"]
