@@ -293,7 +293,9 @@ def test_match_downgrades_covered_on_skills_list_or_coursework():
         inp,
         [_decision("req-1", "covered", "ev-2"), _decision("req-2", "covered", "ev-3"), _decision("req-3", "covered", "ev-4")],
     )
-    assert [m.bucket for m in result.matches] == [Bucket.UNDEREMPHASIZED, Bucket.UNDEREMPHASIZED, Bucket.COVERED]
+    # Go on a skills list -> underemphasized. "Operating Systems" is a concept (generic noun),
+    # and coursework is how concepts are shown -> stays covered. A degree is a credential -> covered.
+    assert [m.bucket for m in result.matches] == [Bucket.UNDEREMPHASIZED, Bucket.COVERED, Bucket.COVERED]
 
 
 def test_match_downgrades_tool_the_line_does_not_name():
@@ -464,53 +466,66 @@ def test_rewrites_skip_llm_when_nothing_to_surface():
     assert result.rewrites == [] and llm.calls == []
 
 
-def test_rewrites_target_only_experience_lines_not_skills_lists_or_satisfied():
-    reqs = [_req("req-1", "Go"), _req("req-2", "AWS"), _req("req-3", "Rust", group="group-1")]
+# A concept the line shows without the JD's keyword: the honest rewrite surfaces "CI/CD".
+EV_CI = _ev("ev-7", "Set up GitHub Actions to run tests on every pull request in 3 repos", [], "experience")
+CI_REWRITE = "Set up CI/CD with GitHub Actions to run tests on every pull request in 3 repos"
+
+
+def _cicd(id: str = "req-2") -> dict:
+    r = _req(id, "CI/CD", "ci/cd")
+    r["category"] = "concept"
+    return r
+
+
+def test_rewrites_target_only_lines_that_can_honestly_gain_the_keyword():
+    reqs = [_req("req-1", "Go"), _cicd(), _req("req-3", "AWS"), _req("req-4", "Rust", group="group-1")]
     matches = [
-        _m("req-1", "underemphasized", EV_SKILLS),
-        _m("req-2", "transferable", EV_CLOUD),
-        _m("req-3", "transferable", EV_CLOUD, satisfied_by="req-9"),
+        _m("req-1", "underemphasized", EV_SKILLS),  # skills list: rewording it adds nothing
+        _m("req-2", "underemphasized", EV_CI),  # target
+        _m("req-3", "transferable", EV_CLOUD),  # can't add "AWS" to a Cloud Run line: project instead
+        _m("req-4", "transferable", EV_CLOUD, satisfied_by="req-9"),  # optional group member
     ]
-    inp = _rewrite_input(reqs, [EV_SKILLS, EV_CLOUD], matches)
-    _, llm = _run_rewrites(inp, [])
+    _, llm = _run_rewrites(_rewrite_input(reqs, [EV_SKILLS, EV_CLOUD, EV_CI], matches), [])
     prompt = llm.calls[0][1]
-    assert "ev-5 | experience" in prompt and "req-2" in prompt
-    assert "ev-2 |" not in prompt and "req-3" not in prompt
+    assert "ev-7 | experience" in prompt and "req-2" in prompt
+    for absent in ("ev-2 |", "ev-5 |", "req-3", "req-4"):
+        assert absent not in prompt
 
 
 def test_rewrites_copy_original_line_from_evidence():
-    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
-    result, _ = _run_rewrites(inp, [_draft("ev-5", "Deployed services to Google Cloud Run across 3 regions", ["req-1"])])
-    assert result.rewrites[0].original_line == EV_CLOUD["line"]
+    inp = _rewrite_input([_cicd()], [EV_CI], [_m("req-2", "underemphasized", EV_CI)])
+    result, _ = _run_rewrites(inp, [_draft("ev-7", CI_REWRITE, ["req-2"])])
+    assert result.rewrites[0].original_line == EV_CI["line"]
 
 
 @pytest.mark.parametrize(
     "suggested",
     [
-        "Deployed 12 services to Google Cloud Run in 3 regions",  # invented number
-        "Deployed services to AWS and Cloud Run in 3 regions",  # adds the JD technology
-        "deployed services to cloud run in 3 regions",  # no real change
+        "Set up CI/CD with GitHub Actions to run tests on every pull request in 12 repos",  # invented number
+        "Set up CI/CD with Jenkins and GitHub Actions for every pull request in 3 repos",  # adds a JD technology
+        "Automated testing with GitHub Actions on every pull request in 3 repos",  # keyword missing
+        "set up github actions to run tests on every pull request in 3 repos",  # no real change
     ],
 )
-def test_rewrites_drop_dishonest_or_empty_rewrites(suggested):
-    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
-    result, _ = _run_rewrites(inp, [_draft("ev-5", suggested, ["req-1"])])
+def test_rewrites_drop_dishonest_empty_or_keywordless_rewrites(suggested):
+    reqs = [_cicd(), _req("req-5", "Jenkins")]
+    inp = _rewrite_input(reqs, [EV_CI], [_m("req-2", "underemphasized", EV_CI)])
+    result, _ = _run_rewrites(inp, [_draft("ev-7", suggested, ["req-2"])])
     assert result.rewrites == []
 
 
 def test_rewrites_retry_when_llm_targets_unlisted_line():
-    inp = _rewrite_input([_req("req-1", "AWS")], [EV_BULLET, EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
-    good = _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-1"])
-    result, llm = _run_rewrites(inp, [[_draft("ev-1", "Built Python REST APIs", ["req-1"])], [good]])
-    assert len(llm.calls) == 2 and result.rewrites[0].evidence_id == "ev-5"
+    inp = _rewrite_input([_cicd()], [EV_BULLET, EV_CI], [_m("req-2", "underemphasized", EV_CI)])
+    bad = [_draft("ev-1", "Built Python REST APIs with CI/CD", ["req-2"])]
+    result, llm = _run_rewrites(inp, [bad, [_draft("ev-7", CI_REWRITE, ["req-2"])]])
+    assert len(llm.calls) == 2 and result.rewrites[0].evidence_id == "ev-7"
 
 
 def test_rewrites_keep_one_per_line():
-    inp = _rewrite_input([_req("req-1", "AWS")], [EV_CLOUD], [_m("req-1", "transferable", EV_CLOUD)])
-    a = _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-1"])
-    b = _draft("ev-5", "Ran services on Google Cloud Run in 3 regions", ["req-1"])
-    result, _ = _run_rewrites(inp, [a, b])
-    assert [r.suggested_line for r in result.rewrites] == [a["suggested_line"]]
+    inp = _rewrite_input([_cicd()], [EV_CI], [_m("req-2", "underemphasized", EV_CI)])
+    other = "Built CI/CD in GitHub Actions running tests on every pull request in 3 repos"
+    result, _ = _run_rewrites(inp, [_draft("ev-7", CI_REWRITE, ["req-2"]), _draft("ev-7", other, ["req-2"])])
+    assert [r.suggested_line for r in result.rewrites] == [CI_REWRITE]
 
 
 # ---------- Stage 5: recommend gaps ----------
@@ -626,8 +641,8 @@ def test_full_default_fake_pipeline():
     matches = match(MatchInput(requirements=reqs, evidence=evidence), llm)
     rewrites = suggest_rewrites(RewriteInput(requirements=reqs, evidence=evidence, matches=matches), llm)
     recs = recommend_gaps(RecommendInput(requirements=reqs, evidence=evidence, matches=matches), llm, lambda _: True)
-    assert [r.evidence_id for r in rewrites.rewrites] == ["ev-2"]
-    assert rewrites.rewrites[0].original_line in _default_resume()
+    # The demo's only rewrite candidate is AWS-from-Cloud-Run: not honest, so none (a project instead).
+    assert rewrites.rewrites == []
     assert [r.requirement_id for r in recs.recommendations] == ["req-2", "req-3"]
 
 
@@ -674,7 +689,7 @@ def test_requirements_eligibility_is_renumbered():
     payload = {
         "role_title": "Intern",
         "requirements": [_req("x", "Python")],
-        "eligibility": [_elig("a", "enrollment"), _elig("b", "degree_level")],
+        "eligibility": [_elig("a", "enrollment", "Returning to school after the internship"), _elig("b", "degree_level", "Pursuing a BS")],
     }
     llm = FakeLLMClient({"RequirementsExtraction": json.dumps(payload)})
     result = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
@@ -692,19 +707,19 @@ def test_other_group_members_become_optional_once_one_is_met():
     ]
 
 
-def test_rewrite_for_implied_concept_needs_confirmation_but_technology_does_not():
+def test_rewrite_for_implied_concept_needs_confirmation_but_stated_work_does_not():
     oop = _req("req-1", "OOP", "object oriented programming")
     oop["category"] = "concept"
-    reqs = [oop, _req("req-2", "AWS")]
     app_line = _ev("ev-6", "Built a journaling app in Python with a FastAPI backend", [], "project")
-    matches = [_m("req-1", "transferable", app_line), _m("req-2", "transferable", EV_CLOUD)]
-    inp = _rewrite_input(reqs, [app_line, EV_CLOUD], matches)
+    matches = [_m("req-1", "transferable", app_line), _m("req-2", "underemphasized", EV_CI)]
+    inp = _rewrite_input([oop, _cicd()], [app_line, EV_CI], matches)
     drafts = [
-        _draft("ev-6", "Built a journaling app in Python using object-oriented design with a FastAPI backend", ["req-1"]),
-        _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-2"]),
+        _draft("ev-6", "Built a journaling app in Python using OOP with a FastAPI backend", ["req-1"]),
+        _draft("ev-7", CI_REWRITE, ["req-2"]),
     ]
     result, _ = _run_rewrites(inp, drafts)
-    assert {r.evidence_id: r.needs_confirmation for r in result.rewrites} == {"ev-6": True, "ev-5": False}
+    # OOP is only implied by the line -> "only if true"; CI/CD is what the line already describes.
+    assert {r.evidence_id: r.needs_confirmation for r in result.rewrites} == {"ev-6": True, "ev-7": False}
 
 
 def test_recommend_skips_traits_and_implied_concepts():
@@ -717,3 +732,115 @@ def test_recommend_skips_traits_and_implied_concepts():
     result, llm = _run_recommend(_recommend_input(reqs, matches), [[_rec("req-3")]])
     assert [r.requirement_id for r in result.recommendations] == ["req-3"]
     assert "Pinterest" not in llm.calls[0][1] and "OOP" not in llm.calls[0][1]
+
+
+def test_concept_named_in_coursework_counts_as_covered():
+    algo = _req("req-1", "Algorithms", "data structures and algorithms")
+    algo["category"] = "concept"
+    java = _req("req-2", "Java")  # a technology in a course list stays underemphasized
+    course = _ev("ev-3", "Coursework: Design and Analysis of Algorithms, Java Programming", [], "education")
+    inp = _match_input([algo, java], [course])
+    result = _run_match(inp, [_decision("req-1", "underemphasized", "ev-3"), _decision("req-2", "covered", "ev-3")])
+    assert [m.bucket for m in result.matches] == [Bucket.COVERED, Bucket.UNDEREMPHASIZED]
+
+
+def test_soft_skills_are_examples_not_grades_and_never_rewritten():
+    team = _ev("ev-1", "Built a mobile app with a team of four", [], "project")
+    comm = _req("req-1", "Communication", "communication")
+    comm["category"] = "soft_skill"
+    solve = _req("req-2", "Problem solving", "problem solving")
+    solve["category"] = "soft_skill"
+    inp = _match_input([comm, solve], [team])
+    result = _run_match(inp, [_decision("req-1", "underemphasized", "ev-1"), _decision("req-2", "transferable", "ev-1")])
+    assert [m.bucket for m in result.matches] == [Bucket.COVERED, Bucket.COVERED]
+
+    rewrites, llm = _run_rewrites(_rewrite_input([comm, solve], [team], [_m("req-1", "underemphasized", team)]), [])
+    assert rewrites.rewrites == [] and llm.calls == []  # nothing to rewrite: no LLM call at all
+
+
+def test_generic_technology_is_judged_like_a_concept_not_by_name():
+    tools = _req("req-1", "AI coding tools", "ai coding tools")  # category technology, but generic
+    line = _ev("ev-1", "Used Claude Code to accelerate implementation and testing", [], "project")
+    result = _run_match(_match_input([tools], [line]), [_decision("req-1", "covered", "ev-1")])
+    assert result.matches[0].bucket == Bucket.COVERED  # no "line doesn't name ai coding tools" downgrade
+
+
+def test_concept_backed_by_coursework_is_covered_even_without_the_jds_wording():
+    fundamentals = _req("req-1", "Computer science fundamentals", "computer science fundamentals")
+    fundamentals["category"] = "concept"
+    course = _ev("ev-3", "Data Structures and Algorithms, Operating Systems, Computer Architecture", [], "education")
+    result = _run_match(_match_input([fundamentals], [course]), [_decision("req-1", "underemphasized", "ev-3")])
+    assert result.matches[0].bucket == Bucket.COVERED
+
+
+
+def _extract(reqs: list[dict], eligibility: list[dict] | None = None) -> RequirementsExtraction:
+    payload = {"role_title": "Intern", "requirements": reqs, "eligibility": eligibility or []}
+    return extract_requirements(ExtractRequirementsInput(jd_text="jd"), FakeLLMClient({"RequirementsExtraction": json.dumps(payload)}))
+
+
+def test_curiosity_about_a_field_becomes_an_optional_trait():
+    defi = _req("x", "DeFi/crypto", "defi")
+    defi["category"] = "domain_knowledge"
+    defi["jd_quote"] = "Curiosity about DeFi/crypto (prior domain experience not required)"
+    python = _req("y", "Python")
+    python["jd_quote"] = "Strong Python skills and a passion for learning"
+    (d, p) = _extract([defi, python]).requirements
+    assert (d.category, d.priority) == ("trait", "preferred")
+    assert (p.category, p.priority) == ("technology", "required")  # "passion for learning" isn't about Python
+
+
+def test_duplicate_enrollment_rule_is_dropped_but_real_conditions_stay():
+    rules = [
+        _elig("a", "degree_level", "Currently pursuing a Bachelor's or Master's degree"),
+        _elig("b", "enrollment", "Currently enrolled as a full-time student"),
+        _elig("c", "enrollment", "Returning to school after the internship"),
+    ]
+    result = _extract([_req("x", "Python")], rules)
+    assert [e.description for e in result.eligibility] == [
+        "Currently pursuing a Bachelor's or Master's degree",
+        "Returning to school after the internship",
+    ]
+
+
+def test_student_status_credential_becomes_an_eligibility_rule():
+    bs = _req("x", "Computer Science degree", "computer science degree")
+    bs["category"] = "credential"
+    bs["jd_quote"] = "A rising senior pursuing a BS computer science or related field"
+    result = _extract([bs, _req("y", "Python")])
+    assert [r.canonical_skill for r in result.requirements] == ["python"]
+    assert [(e.kind, e.jd_quote) for e in result.eligibility] == [("degree_level", bs["jd_quote"])]
+
+
+def test_mission_enthusiasm_is_a_trait_but_domain_experience_is_not():
+    mission = _req("x", "Healthcare", "healthcare")
+    mission["category"] = "domain_knowledge"
+    mission["jd_quote"] = "Inspired by our mission to improve healthcare through technology"
+    experience = _req("y", "Payments", "payments")
+    experience["category"] = "domain_knowledge"
+    experience["jd_quote"] = "Experience with payments systems, and passionate about fintech"
+    (m, e) = _extract([mission, experience]).requirements
+    assert (m.category, e.category) == ("trait", "domain_knowledge")
+
+
+def test_code_overrides_llm_on_student_status_degree_rules():
+    ms = _ev("ev-8", "Master of Science, Computer Science\tSept. 2026 – Jun. 2028", [], "education")
+    rule = _elig("elig-1", "degree_level", "A rising senior pursuing a BS computer science or related field")
+    llm_says = [{"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-8", "rationale": "Has a CS degree."}]
+    result, _ = _match_with_eligibility([rule], [EV_BULLET, ms], [llm_says])
+    check = result.eligibility[0]
+    assert check.status == "not_met" and "master's" in check.rationale and check.evidence_quote == ms["line"]
+
+
+def test_combined_eligibility_sentence_is_dropped_when_already_split():
+    rules = [
+        _elig("a", "degree_level", "Currently a junior in an undergraduate program or pursuing a master's degree"),
+        _elig("b", "graduation_window", "Expected graduation within approximately 18 months"),
+        _elig(
+            "c",
+            "degree_level",
+            "Currently a junior in an undergraduate program or pursuing a master's degree, with an expected graduation date within 18 months",
+        ),
+    ]
+    result = _extract([_req("x", "Python")], rules)
+    assert [e.kind for e in result.eligibility] == ["degree_level", "graduation_window"]

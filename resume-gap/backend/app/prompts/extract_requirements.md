@@ -38,8 +38,8 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
   - `domain_knowledge`: industry or business-area knowledge
   - `soft_skill`: interpersonal skills a resume line can show (communication, leadership, teamwork, mentoring)
   - `credential`: degrees, certifications, licenses
-  - `trait`: interest, passion, enthusiasm, values, or mindset — something a resume can't prove, like "passion for Pinterest", "interest in financial services", "growth mindset", "comfort with ambiguity", "willingness to learn". Split a list of them into separate traits. Interest in a field is a `trait`; knowledge of a field is `domain_knowledge`.
-- `priority`: decide from WHERE and HOW the JD states the requirement.
+  - `trait`: interest, passion, enthusiasm, values, or mindset — including mission statements ("inspired by our mission to improve healthcare" is a trait, not healthcare knowledge) — something a resume can't prove, like "passion for Pinterest", "interest in financial services", "growth mindset", "comfort with ambiguity", "willingness to learn". Split a list of them into separate traits. Interest in a field is a `trait`; knowledge of a field is `domain_knowledge`.
+- `priority`: decide from WHERE and HOW the JD states the requirement. If its sentence says it's optional ("not required", "a plus", "prior experience not required"), it is `preferred`.
   - `required`: stated in a requirements / qualifications / "what you'll need" / "what it takes" section without a softening qualifier.
   - `preferred`:
     - marked "nice to have", "bonus", "a plus", "preferred", "ideally", "familiarity with", or listed in a nice-to-have / bonus section
@@ -58,7 +58,7 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
 
 ## Degrees
 
-Lines about the candidate's current enrollment, degree level, or graduation dates are Eligibility (below), not requirements.
+Lines about the candidate's current enrollment, degree level, or graduation dates are Eligibility (below), not requirements — including "a rising senior pursuing a BS in CS", "currently pursuing a Bachelor's", "undergraduate students". Only a degree the candidate must HOLD ("Bachelor's in CS required") is a `credential` requirement.
 Otherwise, a degree statement becomes ONE `credential` requirement, no matter how many fields it lists. Name it after the first field listed plus "degree".
 "Bachelor's in computer science, software engineering, or a related field required" -> one requirement, skill "Computer Science degree".
 
@@ -72,6 +72,7 @@ Separately from requirements, list every hard condition on WHO can apply, in `el
 - `other`: any other hard condition on the candidate (not a skill)
 
 Fields: `id` ("elig-1", "elig-2", ...), `kind`, `description` (short and specific, keep exact dates and degree names), `jd_quote` (verbatim).
+One rule per DISTINCT condition: "currently pursuing a Bachelor's" and "currently enrolled as a student" are the same condition — list it once.
 Do not put eligibility conditions in `requirements`. Use an empty list if there are none.
 
 ## Known skills

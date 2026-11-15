@@ -23,6 +23,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from .reflow import reflow
+
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # 10-11 digit phone numbers with common separators: (858) 555-1234, +1 858.555.1234, 8585551234
 _PHONE = re.compile(r"(?<![\w])(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?![\w])")
@@ -51,6 +53,7 @@ class Redaction:
 
 def redact_resume(text: str) -> Redaction:
     text = unicodedata.normalize("NFKC", text)  # also fixes PDF ligatures like "ﬁ" -> "fi"
+    text = reflow(text)  # one-word-per-line pastes -> real lines, so headers/bullets are findable
     removed: list[str] = []
     lines = text.splitlines()
     first_heading = next((i for i, line in enumerate(lines) if _is_heading(line)), None)

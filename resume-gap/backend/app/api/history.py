@@ -21,7 +21,25 @@ def list_analyses(
 @router.get("/sessions/{session_id}/gaps", response_model=GapRanking)
 def ranked_gaps(session_id: str, repo: AnalysisRepository = Depends(get_repo)) -> GapRanking:
     """Skill gaps across every job this session analyzed, most worth learning first."""
-    return rank_gaps(repo.list_for_session(session_id, limit=200))
+    return rank_gaps(repo.list_for_session(session_id, limit=200), repo.dismissed_gaps(session_id))
+
+
+@router.put("/sessions/{session_id}/dismissed-gaps/{canonical_skill}", status_code=204)
+def dismiss_gap(session_id: str, canonical_skill: str, repo: AnalysisRepository = Depends(get_repo)) -> None:
+    """Hide a skill from "Learn next" (e.g. you've decided it isn't worth learning)."""
+    repo.dismiss_gap(session_id, canonical_skill)
+
+
+@router.delete("/sessions/{session_id}/dismissed-gaps/{canonical_skill}", status_code=204)
+def restore_gap(session_id: str, canonical_skill: str, repo: AnalysisRepository = Depends(get_repo)) -> None:
+    repo.restore_gap(session_id, canonical_skill)
+
+
+@router.delete("/sessions/{session_id}/analyses/{analysis_id}", status_code=204)
+def delete_analysis(session_id: str, analysis_id: str, repo: AnalysisRepository = Depends(get_repo)) -> None:
+    """Delete one past analysis. Scoped to the session, so one browser can't delete another's."""
+    if not repo.delete(session_id, analysis_id):
+        raise HTTPException(404, "analysis not found")
 
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisResult)

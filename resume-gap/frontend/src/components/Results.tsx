@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   BUCKETS,
   type AnalysisResult,
+  type AnalysisSummary,
   type Bucket,
   type EligibilityCheck,
   type EligibilityRequirement,
@@ -9,20 +10,11 @@ import {
   type MatchScore,
   type Requirement,
   type RequirementMatch,
-  type ResourceType,
   type Rewrite,
   type Verdict,
 } from '../api'
 import { BUCKET_INFO } from '../buckets'
-
-const RESOURCE_LABEL: Record<ResourceType, string> = {
-  official_docs: 'Official docs',
-  course: 'Course',
-  tutorial: 'Tutorial',
-  book: 'Book',
-  video: 'Video',
-  practice: 'Practice',
-}
+import { ProjectPlan } from './Projects'
 
 const VERDICT: Record<Verdict, { title: string; text: string }> = {
   strong: { title: 'Strong match', text: 'Worth applying now. Use the rewrites to make your fit obvious.' },
@@ -40,12 +32,36 @@ function scrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
 }
 
-export function Results({ result }: { result: AnalysisResult }) {
+export function Results({
+  result,
+  versions,
+  onSelectVersion,
+  onTryAnotherResume,
+}: {
+  result: AnalysisResult
+  versions: AnalysisSummary[] // every analysis of this same job, newest first
+  onSelectVersion: (id: string) => void
+  onTryAnotherResume: () => void
+}) {
   const reqs = new Map(result.requirements.requirements.map((r) => [r.id, r]))
-  // Traits (interest, mindset) aren't resume-provable: shown on their own, not in the buckets.
-  const isTrait = (m: RequirementMatch) => reqs.get(m.requirement_id)?.category === 'trait'
-  const matches = result.matches.matches.filter((m) => !isTrait(m))
-  const traits = result.matches.matches.filter(isTrait)
+  // Soft skills and traits are judged in interviews, not resume lines (backend: INTERVIEW_CATEGORIES):
+  // shown on their own, never as gaps.
+  const isInterview = (m: RequirementMatch) => {
+    const category = reqs.get(m.requirement_id)?.category
+    return category === 'soft_skill' || category === 'trait'
+  }
+  // Degrees/certifications are qualifications, not skills: shown with eligibility, not in the buckets.
+  const isCredential = (m: RequirementMatch) => reqs.get(m.requirement_id)?.category === 'credential'
+  const credentials = result.matches.matches.filter(isCredential)
+  const skillMatches = result.matches.matches.filter((m) => !isInterview(m) && !isCredential(m))
+  // "Any one of these" lists: once one option is met, the others fold into its row
+  // instead of appearing as separate cards with their own verdicts.
+  const alternatives = new Map<string, RequirementMatch[]>()
+  for (const m of skillMatches) {
+    if (m.satisfied_by) alternatives.set(m.satisfied_by, [...(alternatives.get(m.satisfied_by) ?? []), m])
+  }
+  const matches = skillMatches.filter((m) => !m.satisfied_by)
+  const interview = result.matches.matches.filter(isInterview)
   const rewrites = result.rewrites.rewrites
   const recommendations = result.recommendations.recommendations
   const { role_title, company } = result.requirements
@@ -76,10 +92,54 @@ export function Results({ result }: { result: AnalysisResult }) {
           {role_title}
           {company && <span className="company"> · {company}</span>}
         </h2>
+        <div className="results-actions">
+          {result.jd_text ? (
+            <>
+              <details className="jd-saved">
+                <summary>Job description</summary>
+                <pre>{result.jd_text}</pre>
+              </details>
+              <button type="button" className="button-small" onClick={onTryAnotherResume}>
+                Try another resume
+              </button>
+            </>
+          ) : (
+            <p className="muted small">This older analysis didn't save its job description.</p>
+          )}
+        </div>
       </header>
 
+      {versions.length > 1 && (
+        <div className="version-tabs" role="tablist" aria-label="Resumes analyzed for this job">
+          {versions.map((v) => {
+            const selected = v.id === result.id
+            return (
+              <button
+                key={v.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={`version-tab ${selected ? 'selected' : ''}`}
+                onClick={() => !selected && onSelectVersion(v.id)}
+              >
+                <span className="version-name">{v.resume_label || 'Resume'}</span>
+                <span className="muted small">
+                  {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ·{' '}
+                  {v.match_percent}%
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <ScoreCard score={result.match_score} recommendations={recommendations} reqs={reqs} />
-      <EligibilityPanel rules={result.requirements.eligibility ?? []} checks={result.matches.eligibility ?? []} />
+      <EligibilityPanel
+        rules={result.requirements.eligibility ?? []}
+        checks={result.matches.eligibility ?? []}
+        credentials={credentials}
+        reqs={reqs}
+      />
 
       <div className="bucket-chips">
         {BUCKETS.map((b) => (
@@ -102,6 +162,7 @@ export function Results({ result }: { result: AnalysisResult }) {
               key={bucket}
               bucket={bucket}
               matches={matches}
+              alternatives={alternatives}
               reqs={reqs}
               open={open[bucket]}
               onToggle={(isOpen) => setOpen((o) => ({ ...o, [bucket]: isOpen }))}
@@ -110,7 +171,7 @@ export function Results({ result }: { result: AnalysisResult }) {
               }}
             />
           ))}
-        {tab === 'match' && <TraitsSection traits={traits} reqs={reqs} />}
+        {tab === 'match' && <InterviewSection items={interview} reqs={reqs} />}
         {tab === 'rewrites' && <RewritesSection rewrites={rewrites} reqs={reqs} />}
         {tab === 'projects' && <ProjectsSection recommendations={recommendations} reqs={reqs} />}
       </div>
@@ -215,34 +276,80 @@ const ELIGIBILITY_KIND: Record<EligibilityRequirement['kind'], string> = {
   other: 'Requirement',
 }
 
-function EligibilityPanel({ rules, checks }: { rules: EligibilityRequirement[]; checks: EligibilityCheck[] }) {
-  if (checks.length === 0) return null
-  const rule = new Map(rules.map((r) => [r.id, r]))
-  const notMet = checks.filter((c) => c.status === 'not_met')
-  const unknown = checks.filter((c) => c.status === 'unknown')
-  const met = checks.filter((c) => c.status === 'met')
+type PanelItem = {
+  key: string
+  label: string // badge: "Degree level", "Credential", ...
+  description: string
+  status: 'met' | 'not_met' | 'unknown'
+  quote: string | null
+  rationale: string
+  jdQuote: string | null
+}
 
-  const row = (c: EligibilityCheck) => {
-    const r = rule.get(c.eligibility_id)
-    return (
-      <li key={c.eligibility_id} className={`elig elig-${c.status}`}>
-        <p className="elig-head">
-          <span className="badge">{r ? ELIGIBILITY_KIND[r.kind] : 'Requirement'}</span> {r?.description}
-        </p>
-        {c.evidence_quote && <blockquote className="quote">{c.evidence_quote}</blockquote>}
-        <p className="rationale">{c.rationale}</p>
-        {r && (
-          <details className="jd-quote">
-            <summary>What the job says</summary>
-            <p>“{r.jd_quote}”</p>
-          </details>
-        )}
-      </li>
-    )
-  }
+/** Hard requirements on the candidate: eligibility rules plus degrees/certifications. */
+function EligibilityPanel({
+  rules,
+  checks,
+  credentials,
+  reqs,
+}: {
+  rules: EligibilityRequirement[]
+  checks: EligibilityCheck[]
+  credentials: RequirementMatch[]
+  reqs: Map<string, Requirement>
+}) {
+  const rule = new Map(rules.map((r) => [r.id, r]))
+  const items: PanelItem[] = [
+    ...checks.map((c) => {
+      const r = rule.get(c.eligibility_id)
+      return {
+        key: c.eligibility_id,
+        label: r ? ELIGIBILITY_KIND[r.kind] : 'Requirement',
+        description: r?.description ?? '',
+        status: c.status,
+        quote: c.evidence_quote,
+        rationale: c.rationale,
+        jdQuote: r?.jd_quote ?? null,
+      }
+    }),
+    // A credential not found is "check yourself", never "not eligible": a related degree
+    // often counts ("CS or a related field"), and only the candidate can judge that.
+    ...credentials.map((m) => {
+      const req = reqs.get(m.requirement_id)!
+      return {
+        key: m.requirement_id,
+        label: 'Credential',
+        description: req.priority === 'preferred' ? `${req.skill} (preferred)` : req.skill,
+        status: m.bucket === 'gap' ? ('unknown' as const) : ('met' as const),
+        quote: m.evidence_quote,
+        rationale: m.bucket === 'gap' ? `Not found on your resume. ${m.rationale}` : m.rationale,
+        jdQuote: req.jd_quote,
+      }
+    }),
+  ]
+  if (items.length === 0) return null
+  const notMet = items.filter((i) => i.status === 'not_met')
+  const unknown = items.filter((i) => i.status === 'unknown')
+  const met = items.filter((i) => i.status === 'met')
+
+  const row = (i: PanelItem) => (
+    <li key={i.key} className={`elig elig-${i.status}`}>
+      <p className="elig-head">
+        <span className="badge">{i.label}</span> {i.description}
+      </p>
+      {i.quote && <blockquote className="quote">{i.quote}</blockquote>}
+      <p className="rationale">{i.rationale}</p>
+      {i.jdQuote && (
+        <details className="jd-quote">
+          <summary>What the job says</summary>
+          <p>“{i.jdQuote}”</p>
+        </details>
+      )}
+    </li>
+  )
 
   return (
-    <section className="eligibility" aria-label="Eligibility">
+    <section className="eligibility" aria-label="Eligibility and credentials">
       {notMet.length > 0 && (
         <div className="elig-group elig-group-not_met" role="alert">
           <h3>You may not be eligible</h3>
@@ -263,7 +370,7 @@ function EligibilityPanel({ rules, checks }: { rules: EligibilityRequirement[]; 
       {met.length > 0 && (
         <details className="elig-group elig-group-met">
           <summary>
-            ✓ You meet {met.length} eligibility requirement{met.length > 1 ? 's' : ''}
+            ✓ You meet {met.length} eligibility &amp; education requirement{met.length > 1 ? 's' : ''}
           </summary>
           <ul>{met.map(row)}</ul>
         </details>
@@ -272,26 +379,32 @@ function EligibilityPanel({ rules, checks }: { rules: EligibilityRequirement[]; 
   )
 }
 
-function TraitsSection({ traits, reqs }: { traits: RequirementMatch[]; reqs: Map<string, Requirement> }) {
-  if (traits.length === 0) return null
+function InterviewSection({ items, reqs }: { items: RequirementMatch[]; reqs: Map<string, Requirement> }) {
+  if (items.length === 0) return null
   return (
     <section className="section traits">
-      <h3>Traits & interests</h3>
+      <h3>For your cover letter & interview</h3>
       <p className="muted small">
-        Things like passion for the company or a growth mindset can't be proven by a resume line, so they don't count
-        toward your match. Show them in your cover letter or interview instead.
+        Soft skills, interests, and mindset (communication, prioritizing, passion for the company) are judged by people,
+        not resume lines, so they don't count toward your match. Plan a story or a sentence for each.
       </p>
       <ul className="trait-list">
-        {traits.map((m) => {
+        {items.map((m) => {
           const req = reqs.get(m.requirement_id)!
           return (
             <li key={m.requirement_id} className="trait">
               <div className="match-head">
                 <span className="skill">{req.skill}</span>
-                {m.bucket !== 'gap' && <span className="badge badge-shown">shown on your resume</span>}
               </div>
-              {m.evidence_quote && <blockquote className="quote">{m.evidence_quote}</blockquote>}
-              <p className="muted small">“{req.jd_quote}”</p>
+              {m.evidence_quote ? (
+                <>
+                  <p className="muted small">An example you could use:</p>
+                  <blockquote className="quote">{m.evidence_quote}</blockquote>
+                </>
+              ) : (
+                <p className="muted small">No example on your resume yet, so have a story ready.</p>
+              )}
+              <p className="muted small">The job says: “{req.jd_quote}”</p>
             </li>
           )
         })}
@@ -303,6 +416,7 @@ function TraitsSection({ traits, reqs }: { traits: RequirementMatch[]; reqs: Map
 function BucketSection({
   bucket,
   matches,
+  alternatives,
   reqs,
   open,
   onToggle,
@@ -310,6 +424,7 @@ function BucketSection({
 }: {
   bucket: Bucket
   matches: RequirementMatch[]
+  alternatives: Map<string, RequirementMatch[]>
   reqs: Map<string, Requirement>
   open: boolean
   onToggle: (open: boolean) => void
@@ -332,7 +447,13 @@ function BucketSection({
         </summary>
         <ul className="match-list">
           {inBucket.map((m) => (
-            <MatchRow key={m.requirement_id} match={m} req={reqs.get(m.requirement_id)!} reqs={reqs} />
+            <MatchRow
+              key={m.requirement_id}
+              match={m}
+              req={reqs.get(m.requirement_id)!}
+              reqs={reqs}
+              alternatives={alternatives.get(m.requirement_id) ?? []}
+            />
           ))}
         </ul>
       </details>
@@ -341,31 +462,54 @@ function BucketSection({
 }
 
 function rank(m: RequirementMatch, reqs: Map<string, Requirement>): number {
-  if (m.satisfied_by) return 2
   return reqs.get(m.requirement_id)?.priority === 'required' ? 0 : 1
 }
 
-function MatchRow({ match, req, reqs }: { match: RequirementMatch; req: Requirement; reqs: Map<string, Requirement> }) {
-  const satisfiedBy = match.satisfied_by ? reqs.get(match.satisfied_by) : undefined
+const ALTERNATIVE_STATUS: Record<Bucket, string> = {
+  covered: 'also on your resume',
+  underemphasized: 'listed, not shown in use',
+  transferable: 'related experience',
+  gap: 'not on your resume',
+}
+
+function MatchRow({
+  match,
+  req,
+  reqs,
+  alternatives,
+}: {
+  match: RequirementMatch
+  req: Requirement
+  reqs: Map<string, Requirement>
+  alternatives: RequirementMatch[] // other options from the same "any one of these" list
+}) {
   return (
-    <li className={`match ${satisfiedBy ? 'match-satisfied' : ''}`}>
+    <li className="match">
       <div className="match-head">
         <span className="skill">{req.skill}</span>
-        {satisfiedBy ? (
-          <span className="badge badge-optional">optional</span>
-        ) : (
-          <span className={`badge badge-${req.priority}`}>{req.priority}</span>
-        )}
+        <span className={`badge badge-${req.priority}`}>{req.priority}</span>
         {req.years_required != null && <span className="badge">{req.years_required}+ yrs</span>}
       </div>
-      {satisfiedBy && (
-        <p className="satisfied-note">
-          The job accepts any one of these, and you have {satisfiedBy.skill}.
-          {match.bucket === 'underemphasized' && ` Showing real ${req.skill} work would still strengthen your application.`}
-        </p>
-      )}
       {match.evidence_quote && <blockquote className="quote">{match.evidence_quote}</blockquote>}
       <p className="rationale">{match.rationale}</p>
+      {alternatives.length > 0 && (
+        <div className="alternatives">
+          <p className="small muted">
+            The job accepts any one of these, and {req.skill} meets it. The others are optional:
+          </p>
+          <ul>
+            {alternatives.map((alt) => {
+              const altReq = reqs.get(alt.requirement_id)!
+              return (
+                <li key={alt.requirement_id} className="small">
+                  <span className="alt-skill">{altReq.skill}</span>{' '}
+                  <span className={`alt-status alt-${alt.bucket}`}>{ALTERNATIVE_STATUS[alt.bucket]}</span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
       <details className="jd-quote">
         <summary>What the job says</summary>
         <p>“{req.jd_quote}”</p>
@@ -437,45 +581,13 @@ function ProjectsSection({
                   <span className="skill">{req?.skill ?? rec.requirement_id}</span>
                   {req && <span className={`badge badge-${req.priority}`}>{req.priority}</span>}
                 </div>
-                <ol className="project-list">
-                  {rec.projects.map((p) => (
-                    <li key={p.title} className="project">
-                      <div className="project-head">
-                        <h4>{p.title}</h4>
-                        <span className="badge">~{p.estimated_hours}h</span>
-                      </div>
-                      <p>{p.description}</p>
-                    </li>
-                  ))}
-                </ol>
-                <ResourceLink rec={rec} />
+                <ProjectPlan rec={rec} />
               </li>
             )
           })}
         </ul>
       )}
     </section>
-  )
-}
-
-function ResourceLink({ rec }: { rec: GapRecommendation }) {
-  const host = rec.resource_url_verified ? new URL(rec.resource_url).hostname.replace(/^www\./, '') : null
-  return (
-    <p className="resource">
-      <span className="badge badge-resource">{RESOURCE_LABEL[rec.resource_type]}</span>
-      <a href={rec.resource_url} target="_blank" rel="noopener noreferrer">
-        {rec.resource_url_verified ? rec.resource_title : `Search: ${rec.resource_title}`}
-      </a>
-      {host ? (
-        <span className="muted small" title="We checked this link loads">
-          {host} ✓
-        </span>
-      ) : (
-        <span className="muted small" title="We couldn't confirm an official link, so this opens a web search">
-          (no checked link)
-        </span>
-      )}
-    </p>
   )
 }
 

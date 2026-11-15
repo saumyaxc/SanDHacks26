@@ -159,18 +159,6 @@ DEFAULT_RESPONSES: dict[str, str] = {
             ],
         }
     ),
-    "RewriteDrafts": json.dumps(
-        {
-            "rewrites": [
-                {
-                    "evidence_id": "ev-2",
-                    "suggested_line": "Containerized services with Docker and deployed them to Google Cloud (Cloud Run)",
-                    "requirement_ids": ["req-3"],
-                    "reason": "Names the cloud provider explicitly so cloud deployment experience is easy to spot.",
-                }
-            ]
-        }
-    ),
     "GapRecommendationDrafts": json.dumps(
         {
             "recommendations": [

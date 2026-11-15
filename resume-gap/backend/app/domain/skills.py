@@ -119,3 +119,24 @@ def text_names_any(text: str, names: set[str]) -> bool:
         if term and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9+#])", norm):
             return True
     return False
+
+
+# Category nouns: a skill named with one of these is a kind of thing ("search systems",
+# "AI coding tools", "backend services"), not one named product. No resume line contains
+# that phrase literally, so it must be judged like a concept, never by name matching.
+_GENERIC_NOUNS = frozenset(
+    {
+        "tool", "tools", "system", "systems", "service", "services", "platform", "platforms",
+        "framework", "frameworks", "library", "libraries", "database", "databases",
+        "language", "languages", "technology", "technologies", "infrastructure",
+        "application", "applications", "stack", "stacks", "solution", "solutions",
+        "pipeline", "pipelines", "architecture", "architectures", "workflow", "workflows",
+        "development", "engineering", "concepts", "fundamentals",
+    }
+)  # fmt: skip
+
+
+def is_named_product(canonical_skill: str) -> bool:
+    """True for one specific named thing (python, react, postgresql, aws, power bi);
+    False for a kind of thing (search systems, ai coding tools, relational databases)."""
+    return not (set(canonical_skill.lower().split()) & _GENERIC_NOUNS)

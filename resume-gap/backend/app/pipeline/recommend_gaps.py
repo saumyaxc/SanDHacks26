@@ -4,9 +4,9 @@ Code decides which requirements get a recommendation; the LLM only writes them:
 - Only gap/transferable matches, skipping any requirement another any_of_group
   member already satisfies.
 - Credentials are skipped: a weekend project can't earn a degree or certification.
-- Traits are skipped: interest and mindset go in a cover letter, not a project.
-- Transferable concepts are skipped: the work already implies them, so the fix is a
-  rewrite ("only if true"), not a project.
+- Soft skills and traits are skipped: they go in a cover letter or interview, not a project.
+- Transferable concepts and generic "technologies" (search systems) are skipped: the work
+  already shows them, so the fix is a rewrite ("only if true"), not a project.
 - Exactly one recommendation per target (validated, retried), returned required-first.
 - Every resource link works: the LLM's URL is shown only if `url_is_live` confirms it;
   otherwise the link is a web search for the resource title, flagged as unverified.
@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from app.domain.enums import Bucket, Priority, SkillCategory
+from app.domain.enums import INTERVIEW_CATEGORIES, Bucket, Priority, SkillCategory
 from app.domain.schemas import (
     EvidenceExtraction,
     GapRecommendation,
@@ -28,6 +28,7 @@ from app.domain.schemas import (
     Requirement,
     RequirementMatch,
 )
+from app.domain.skills import is_named_product
 from app.llm.base import LLMClient
 
 _PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "recommend_gaps.md").read_text(encoding="utf-8")
@@ -84,11 +85,20 @@ def _targets(matches: list[RequirementMatch], requirements: dict[str, Requiremen
         for m in matches
         if m.bucket in _TARGET_BUCKETS
         and not m.satisfied_by
-        and requirements[m.requirement_id].category not in (SkillCategory.CREDENTIAL, SkillCategory.TRAIT)
-        and not (m.bucket == Bucket.TRANSFERABLE and requirements[m.requirement_id].category == SkillCategory.CONCEPT)
+        and requirements[m.requirement_id].category != SkillCategory.CREDENTIAL
+        and requirements[m.requirement_id].category not in INTERVIEW_CATEGORIES
+        and not (m.bucket == Bucket.TRANSFERABLE and _is_kind_of_work(requirements[m.requirement_id]))
     ]
     # Required before preferred; JD order within each (sort is stable).
     return sorted(targets, key=lambda m: requirements[m.requirement_id].priority != Priority.REQUIRED)
+
+
+def _is_kind_of_work(req: Requirement) -> bool:
+    """A concept or generic "technology" (search systems): related work already shows it, so a
+    rewrite surfaces it. Only a missing specific product (Kubernetes) needs a project."""
+    return req.category == SkillCategory.CONCEPT or (
+        req.category == SkillCategory.TECHNOLOGY and not is_named_product(req.canonical_skill)
+    )
 
 
 def _format_gaps(targets: list[RequirementMatch], requirements: dict[str, Requirement]) -> str:

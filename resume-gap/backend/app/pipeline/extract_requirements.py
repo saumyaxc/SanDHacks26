@@ -1,10 +1,26 @@
-"""Stage 1: JD text -> structured, de-duplicated requirements."""
+"""Stage 1: JD text -> structured, de-duplicated requirements.
 
+Code backstops on the LLM's labels, read from the JD's own wording (plain English, not skills):
+- "curiosity about / interest in / passion for X" makes X a trait (interview material).
+- "not required", "a plus", "nice to have", "bonus" in its JD sentence make it preferred.
+- An enrollment rule that only restates "currently pursuing a degree" is dropped as a duplicate.
+- A "credential" phrased as student status ("a rising senior pursuing a BS") is moved to
+  eligibility, where it's checked against the candidate's CURRENT program, not their degrees.
+- A domain item from a mission/inspiration sentence with no experience or knowledge asked
+  ("inspired by our mission to improve healthcare") is a trait.
+"""
+
+import re
 from collections import Counter
 from pathlib import Path
 
-from app.domain.enums import Priority
-from app.domain.schemas import ExtractRequirementsInput, Requirement, RequirementsExtraction
+from app.domain.enums import EligibilityKind, Priority, SkillCategory
+from app.domain.schemas import (
+    EligibilityRequirement,
+    ExtractRequirementsInput,
+    Requirement,
+    RequirementsExtraction,
+)
 from app.domain.skills import skill_vocabulary
 from app.llm.base import LLMClient
 
@@ -24,7 +40,17 @@ def extract_requirements(data: ExtractRequirementsInput, llm: LLMClient) -> Requ
 
 
 def _clean(extraction: RequirementsExtraction) -> RequirementsExtraction:
-    requirements = _normalize_groups(_dedupe(extraction.requirements))
+    student_rules = [r for r in extraction.requirements if _is_student_status_credential(r)]
+    kept = [r for r in extraction.requirements if r not in student_rules]
+    if not kept:  # the schema needs at least one requirement; leave things as they are
+        kept, student_rules = list(extraction.requirements), []
+    requirements = _normalize_groups(_dedupe([_backstop(r) for r in kept]))
+    eligibility = list(extraction.eligibility) + [
+        EligibilityRequirement(
+            id="moved", kind=EligibilityKind.DEGREE_LEVEL, description=r.jd_quote[:160], jd_quote=r.jd_quote
+        )
+        for r in student_rules
+    ]
     # Re-construct (not model_copy) so the non-empty / unique-id validators run again.
     return RequirementsExtraction(
         role_title=extraction.role_title,
@@ -33,9 +59,96 @@ def _clean(extraction: RequirementsExtraction) -> RequirementsExtraction:
             r.model_copy(update={"id": f"req-{i}"}) for i, r in enumerate(requirements, start=1)
         ],
         eligibility=[
-            e.model_copy(update={"id": f"elig-{i}"}) for i, e in enumerate(extraction.eligibility, start=1)
+            e.model_copy(update={"id": f"elig-{i}"})
+            for i, e in enumerate(_dedupe_eligibility(eligibility), start=1)
         ],
     )
+
+
+_INTEREST = re.compile(
+    r"\b(curiosity|curious|interest|interested|passion|passionate|enthusiasm|enthusiastic|excited|excitement|love)"
+    r"\s+(about|in|for|toward|towards)\s+(the\s+)?$",
+    re.I,
+)
+_OPTIONAL = re.compile(
+    r"\bnot\s+(required|necessary|needed|a\s+requirement)\b|\bnice[\s-]to[\s-]have\b|\ba\s+plus\b|\bbonus\b",
+    re.I,
+)
+
+
+_STUDENT_STATUS = re.compile(r"\b(pursuing|currently\s+enrolled|rising\s+(sophomore|junior|senior)|undergraduate\s+student)\b", re.I)
+_MISSION = re.compile(
+    r"\b(inspired|motivated|driven|excited|passionate|passion|mission|believe|care\s+(deeply\s+)?about)\b", re.I
+)
+_EXPERIENCE = re.compile(
+    r"\b(experience|experienced|knowledge|knowledgeable|background|familiarity|familiar|understanding|worked|"
+    r"expertise|proficien\w*|skills?|years?)\b",
+    re.I,
+)
+
+
+def _is_student_status_credential(req: Requirement) -> bool:
+    return req.category == SkillCategory.CREDENTIAL and bool(_STUDENT_STATUS.search(req.jd_quote))
+
+
+def _backstop(req: Requirement) -> Requirement:
+    update: dict = {}
+    quote = req.jd_quote
+    # "Inspired by our mission to improve healthcare": enthusiasm for the field, not knowledge of it.
+    if req.category == SkillCategory.DOMAIN_KNOWLEDGE and _MISSION.search(quote) and not _EXPERIENCE.search(quote):
+        update["category"] = SkillCategory.TRAIT
+    # "Curiosity about DeFi/crypto": the interest phrase sits right before the skill.
+    at = quote.lower().find(req.skill.lower())
+    if at > 0 and _INTEREST.search(quote[max(0, at - 40) : at]) and req.category != SkillCategory.TRAIT:
+        update["category"] = SkillCategory.TRAIT
+    if req.priority == Priority.REQUIRED and _OPTIONAL.search(quote):
+        update["priority"] = Priority.PREFERRED
+    return req.model_copy(update=update) if update else req
+
+
+_PURSUING = re.compile(r"\b(currently\s+)?(pursuing|enrolled|student)\b", re.I)
+
+
+def _dedupe_eligibility(rules: list[EligibilityRequirement]) -> list[EligibilityRequirement]:
+    """One rule per condition.
+
+    - 'Currently pursuing a degree' and 'currently enrolled as a student' are one condition.
+    - A rule that is another rule plus more ("…in CS or a related field, with an expected
+      graduation date…") is the combined sentence the model already split into parts: drop it.
+    """
+    norm = {id(r): " ".join(r.description.lower().split()).rstrip(".") for r in rules}
+    rules = [
+        r
+        for r in rules
+        if not any(
+            other is not r and len(norm[id(other)]) < len(norm[id(r)]) and norm[id(r)].startswith(norm[id(other)])
+            for other in rules
+        )
+    ]
+    has_pursuing_degree = any(r.kind == EligibilityKind.DEGREE_LEVEL and _PURSUING.search(r.description) for r in rules)
+    out: list[EligibilityRequirement] = []
+    seen: set[str] = set()
+    for r in rules:
+        key = " ".join(r.description.lower().split())
+        if key in seen:
+            continue
+        # Drop an enrollment rule that adds nothing beyond "is a current student" when a
+        # degree-level rule already says "currently pursuing". Keep ones with real extra
+        # conditions (returning to school after the internship, completed 2 years, ...).
+        if has_pursuing_degree and r.kind == EligibilityKind.ENROLLMENT and _only_says_enrolled(r.description):
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
+def _only_says_enrolled(description: str) -> bool:
+    words = set(re.findall(r"[a-z]+", description.lower()))
+    filler = {
+        "currently", "enrolled", "enrollment", "as", "a", "an", "in", "student", "students", "pursuing",
+        "degree", "program", "university", "college", "school", "full", "time", "full-time", "at", "accredited",
+    }  # fmt: skip
+    return bool(words) and words <= filler
 
 
 def _dedupe(requirements: list[Requirement]) -> list[Requirement]:

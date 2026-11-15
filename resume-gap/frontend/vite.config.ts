@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     // Same-origin calls to /api in dev: no CORS config needed on the backend.
     proxy: {
-      '/api': 'http://localhost:8000',
+      // API_URL lets a second copy (e.g. a test server) run beside the normal one.
+      '/api': process.env.API_URL ?? 'http://localhost:8000',
     },
   },
 })

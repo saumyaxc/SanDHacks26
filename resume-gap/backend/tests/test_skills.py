@@ -1,6 +1,6 @@
 import pytest
 
-from app.domain.skills import ALIASES, known_canonical_skills, normalize_skill
+from app.domain.skills import ALIASES, is_named_product, known_canonical_skills, normalize_skill
 
 
 @pytest.mark.parametrize(
@@ -33,3 +33,19 @@ def test_canonical_names_are_stable():
 
 def test_no_alias_chains():
     assert not set(ALIASES.values()) & set(ALIASES), "an alias value is also a key"
+
+
+@pytest.mark.parametrize(
+    ("skill", "named"),
+    [
+        ("python", True),
+        ("power bi", True),
+        ("node.js", True),
+        ("search systems", False),
+        ("ai coding tools", False),
+        ("backend services", False),
+        ("relational databases", False),
+    ],
+)
+def test_is_named_product(skill, named):
+    assert is_named_product(skill) is named

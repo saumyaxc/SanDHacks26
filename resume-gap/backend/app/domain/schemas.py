@@ -6,11 +6,13 @@ not Field(...) constraints — validators never reach the LLM, and a failure
 triggers the client's retry.
 """
 
+import hashlib
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, computed_field, model_validator
 
 from .enums import (
+    INTERVIEW_CATEGORIES,
     Bucket,
     EligibilityKind,
     EligibilityStatus,
@@ -386,6 +388,7 @@ class AnalysisRequest(_Base):
     session_id: str = Field(min_length=1)
     jd_text: str = Field(min_length=1, max_length=MAX_INPUT_CHARS)
     resume_text: str = Field(min_length=1, max_length=MAX_INPUT_CHARS)
+    resume_label: str = Field(default="", max_length=200)  # e.g. the PDF's file name, for history tabs
 
 
 class ParsedResume(_Base):
@@ -399,11 +402,28 @@ class AnalysisResult(_Base):
     id: str
     session_id: str
     created_at: datetime
+    # The job posting itself (public text), so past jobs can be re-read or re-analyzed.
+    # Raw resume text is never stored; only the extracted, verified lines in `evidence`.
+    jd_text: str = ""
+    resume_label: str = ""  # which resume this was run with ("resume.pdf", "pasted text")
     requirements: RequirementsExtraction
     evidence: EvidenceExtraction
     matches: MatchResult
     rewrites: RewriteSuggestions
     recommendations: GapRecommendations
+
+    @computed_field
+    @property
+    def job_key(self) -> str:
+        """Same job posting -> same key, so analyses of one job group together (history, ranking).
+
+        The saved JD text when there is one (whitespace/case-insensitive); otherwise role + company.
+        """
+        if self.jd_text.strip():
+            normalized = " ".join(self.jd_text.lower().split())
+            return "jd:" + hashlib.sha256(normalized.encode()).hexdigest()[:16]
+        company = (self.requirements.company or "").strip().lower()
+        return f"role:{self.requirements.role_title.strip().lower()}|{company}"
 
     # Computed (not stored): recalculated on every load, so old saved analyses get it too.
     @computed_field
@@ -413,8 +433,10 @@ class AnalysisResult(_Base):
         units: dict[str, tuple[Priority, list[Bucket]]] = {}
         for m in self.matches.matches:
             req = reqs[m.requirement_id]
-            if req.category == SkillCategory.TRAIT:
-                continue
+            if req.category in INTERVIEW_CATEGORIES:
+                continue  # soft skills and traits are interview material, not resume gaps
+            if req.category == SkillCategory.CREDENTIAL:
+                continue  # a degree is a qualification (shown with eligibility), not a skill
             key = req.any_of_group or req.id
             priority, buckets = units.get(key, (req.priority, []))
             if req.priority == Priority.REQUIRED:
@@ -433,6 +455,8 @@ class AnalysisSummary(_Base):
     company: str | None
     bucket_counts: dict[Bucket, int]
     match_percent: int
+    job_key: str  # equal for analyses of the same job posting
+    resume_label: str
 
     @classmethod
     def from_result(cls, result: AnalysisResult) -> "AnalysisSummary":
@@ -446,6 +470,8 @@ class AnalysisSummary(_Base):
             company=result.requirements.company,
             bucket_counts=counts,
             match_percent=result.match_score.percent,
+            job_key=result.job_key,
+            resume_label=result.resume_label,
         )
 
 
@@ -454,6 +480,7 @@ class AnalysisSummary(_Base):
 
 class GapOccurrence(_Base):
     analysis_id: str
+    requirement_id: str
     role_title: str
     company: str | None
     bucket: Bucket  # gap or transferable
@@ -468,6 +495,8 @@ class RankedGap(_Base):
     job_count: int
     required_count: int
     occurrences: list[GapOccurrence]  # newest first
+    # Projects + resource from the newest analysis that recommended any for this skill.
+    recommendation: GapRecommendation | None = None
 
 
 class GapRanking(_Base):
@@ -475,3 +504,4 @@ class GapRanking(_Base):
 
     analysis_count: int  # distinct jobs considered
     gaps: list[RankedGap]
+    dismissed: list[str] = []  # canonical skills the user hid; offered for restore

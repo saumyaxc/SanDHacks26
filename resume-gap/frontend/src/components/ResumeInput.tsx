@@ -14,7 +14,21 @@ function describeRemoved(removed: string[]): string {
 
 /** Resume input that stays out of the way: a dropzone when empty, a one-line card once loaded,
  *  and the full text box only when the user asks to see or edit the text. */
-export function ResumeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function ResumeInput({
+  value,
+  onChange,
+  onUploaded,
+  savedLabel,
+  onForget,
+  hint,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onUploaded: (text: string, fileName: string) => void
+  savedLabel: string | null // e.g. "resume.pdf, saved Nov 14" when the text came from this browser's memory
+  onForget: () => void
+  hint: string | null // e.g. "Upload the resume you want to compare against this job."
+}) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -30,7 +44,7 @@ export function ResumeInput({ value, onChange }: { value: string; onChange: (v: 
     setNote(null)
     try {
       const parsed = await parseResumePdf(file)
-      onChange(parsed.text)
+      onUploaded(parsed.text, file.name)
       setEditing(false)
       const removed = describeRemoved(parsed.removed)
       setNote({
@@ -71,11 +85,6 @@ export function ResumeInput({ value, onChange }: { value: string; onChange: (v: 
     <div className="textbox">
       <div className="textbox-label">
         <span>Your resume</span>
-        {(editing || over) && (
-          <span className={`counter ${over ? 'over' : ''}`}>
-            {value.length.toLocaleString()} / {MAX_INPUT_CHARS.toLocaleString()}
-          </span>
-        )}
       </div>
       {fileInput}
 
@@ -84,7 +93,7 @@ export function ResumeInput({ value, onChange }: { value: string; onChange: (v: 
           <div>
             <p className="resume-ready-title">✓ Resume ready</p>
             <p className="muted small">
-              {value.length.toLocaleString()} characters{over && ' (too long)'}
+              {savedLabel ? `Your last resume: ${savedLabel}` : 'Ready to analyze'}
             </p>
           </div>
           <div className="resume-ready-actions">
@@ -105,6 +114,14 @@ export function ResumeInput({ value, onChange }: { value: string; onChange: (v: 
               Clear
             </button>
           </div>
+          {savedLabel && (
+            <p className="saved-note small muted">
+              Remembered in this browser only.{' '}
+              <button type="button" className="inline-link" onClick={onForget}>
+                Forget it
+              </button>
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -146,6 +163,12 @@ export function ResumeInput({ value, onChange }: { value: string; onChange: (v: 
         </>
       )}
 
+      {over && (
+        <p className="upload-note error" role="alert">
+          Your resume is over {MAX_INPUT_CHARS.toLocaleString()} characters. Trim it down to analyze it.
+        </p>
+      )}
+      {hint && <p className="upload-note hint">{hint}</p>}
       {note && <p className={`upload-note ${note.kind}`}>{note.text}</p>}
     </div>
   )

@@ -8,7 +8,7 @@ One item per resume line that shows experience, skills, or credentials:
 - Each bullet under a job, internship, research position, or project
 - Each project or job header line that lists technologies (e.g. "MyApp | Python, OpenCV, FastAPI"). Copy the line up to the end of the technology list; leave out trailing dates and locations. Section: same as the entry it heads.
 - Each line of a skills section (e.g. "Languages: Python, Java")
-- Each degree, certification, award, or relevant coursework line
+- Each degree, certification, award, or relevant coursework line. For degree lines, copy the WHOLE line INCLUDING its date range ("Bachelor of Science, Computer Science    Sep. 2020 – Jun. 2024", "B.S. Data Science, expected May 2027"): the dates show whether the degree is finished or in progress. If the dates sit on the school's line instead, also extract that school line with its dates.
 - Summary/objective sentences that name concrete skills
 
 Skip: name, contact details, links, section headings, lines that are only dates or locations, and personal information.

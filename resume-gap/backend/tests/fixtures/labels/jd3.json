@@ -1,0 +1,104 @@
+{
+  "jd": "jd3.txt",
+  "resume": "mine.txt",
+  "labels": [
+    {
+      "skill": "sql",
+      "category": "technology",
+      "jd_says": "Skills in SQL, Python, and data profiling and analysis.",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "python",
+      "category": "technology",
+      "jd_says": "Skills in SQL, Python, and data profiling and analysis.",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "data profiling and analysis",
+      "category": "concept",
+      "jd_says": "Skills in SQL, Python, and data profiling and analysis.",
+      "pipeline_said": "underemphasized",
+      "expected": "underemphasized"
+    },
+    {
+      "skill": "azure",
+      "category": "technology",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "snowflake",
+      "category": "technology",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "streamlit",
+      "category": "technology",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "tableau",
+      "category": "technology",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "power bi",
+      "category": "technology",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "relational concepts",
+      "category": "concept",
+      "jd_says": "Experience with Azure, Snowflake, Streamlit, Tableau, or Power BI is a plus, as is a working knowledge of relational concepts (primary and foreign keys, schemas, data mapping).",
+      "pipeline_said": "underemphasized",
+      "expected": "underemphasized"
+    },
+    {
+      "skill": "curiosity",
+      "category": "trait",
+      "jd_says": "Curiosity and a habit of questioning unexpected results.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "urgency and ownership",
+      "category": "trait",
+      "jd_says": "Urgency and ownership. You keep a steady pace without micromanagement and see work through to completion.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "thoroughness and attention to detail",
+      "category": "trait",
+      "jd_says": "Thoroughness and attention to detail, especially on repetitive or detail-heavy work.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "comfort with ambiguity",
+      "category": "trait",
+      "jd_says": "Comfort with ambiguity. You can take a loosely defined assignment, set a clear scope, and deliver outcome-based results.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "collaboration and accountability",
+      "category": "soft_skill",
+      "jd_says": "Collaboration and accountability. You ask questions instead of guessing, raise issues early, and focus on root causes instead of blame.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    }
+  ]
+}

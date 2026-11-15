@@ -3,23 +3,34 @@
 Guarantees, enforced here rather than trusted to the LLM:
 - Every non-gap match quotes a real resume line: the LLM picks an evidence_id,
   and the quote is copied from that evidence item (which stage 2 verified).
-- For a `technology` requirement, code decides whether the resume has it: if any
-  line names it (tag, text, or known alias), the best such line is used; if none
-  does, the LLM may only choose transferable or gap. Concepts, soft skills,
-  domain knowledge, and credentials are judged by the LLM.
-- "Covered" means demonstrated: a skills-list line, or a coursework line for a
-  non-credential, is downgraded to underemphasized.
+- For a specific named technology (python, react — see skills.is_named_product), code
+  decides whether the resume has it: if any line names it (tag, text, or alias), the
+  best such line is used; if none does, the LLM may only choose transferable or gap.
+  Generic "technologies" ("search systems", "AI coding tools") can't be name-matched,
+  so they're judged like concepts, by the LLM.
+- "Covered" means demonstrated: a skills-list line, or a coursework line for a named
+  technology, is downgraded to underemphasized. A concept backed by coursework
+  (algorithms, CS fundamentals) counts as covered: that's how fundamentals are shown.
 - Once any member of an any_of_group is covered/underemphasized, every OTHER member is
   marked satisfied_by: the job needs only one, so the rest are optional.
 - Eligibility checks quote real lines too, and work authorization is always "unknown":
-  it must never be guessed from a resume.
+  it must never be guessed from a resume. Education dates are parsed in code
+  (domain/education.py) and handed to the LLM as a timeline, not left to its arithmetic.
 """
 
 from datetime import date
 from pathlib import Path
 
-from app.domain.enums import Bucket, EligibilityKind, EligibilityStatus, ResumeSection, SkillCategory
-from app.domain.skills import skill_names, text_names_any
+from app.domain.education import Program, education_timeline, format_timeline, judge_degree_rule
+from app.domain.enums import (
+    INTERVIEW_CATEGORIES,
+    Bucket,
+    EligibilityKind,
+    EligibilityStatus,
+    ResumeSection,
+    SkillCategory,
+)
+from app.domain.skills import is_named_product, skill_names, text_names_any
 from app.domain.schemas import (
     EligibilityCheck,
     EligibilityRequirement,
@@ -54,8 +65,11 @@ def match(data: MatchInput, llm: LLMClient, today: date | None = None) -> MatchR
     items = data.evidence.items
     evidence = {e.id: e for e in items}
 
+    today = today or date.today()
+    programs = education_timeline(items, today)
     prompt = (
-        _PROMPT.replace("{{TODAY}}", (today or date.today()).isoformat())
+        _PROMPT.replace("{{TODAY}}", today.isoformat())
+        .replace("{{EDUCATION_TIMELINE}}", format_timeline(programs))
         .replace("{{REQUIREMENTS}}", _format_requirements(requirements))
         .replace("{{ELIGIBILITY}}", _format_eligibility(rules))
         .replace("{{EVIDENCE}}", _format_evidence(items))
@@ -77,13 +91,19 @@ def match(data: MatchInput, llm: LLMClient, today: date | None = None) -> MatchR
         ev = evidence.get(decision.evidence_id) if decision.bucket != Bucket.GAP else None
         bucket, rationale = decision.bucket, decision.rationale
 
-        if req.category == SkillCategory.TECHNOLOGY:
+        if req.category == SkillCategory.TECHNOLOGY and is_named_product(req.canonical_skill):
             bucket, ev, rationale = _check_technology(req, decision, ev, items)
+        elif _is_concept_coursework(req, ev) and bucket == Bucket.UNDEREMPHASIZED:
+            bucket = Bucket.COVERED  # coursework is how fundamentals are normally shown
+
+        bucket = _enforce_strength(bucket, req, ev)
+        if req.category in INTERVIEW_CATEGORIES and ev is not None:
+            bucket = Bucket.COVERED  # interview material isn't graded: a line is either an example or not
 
         matches.append(
             RequirementMatch(
                 requirement_id=req.id,
-                bucket=_enforce_strength(bucket, req, ev),
+                bucket=bucket,
                 evidence_id=ev.id if ev else None,
                 evidence_quote=ev.line if ev else None,
                 rationale=rationale,
@@ -91,12 +111,15 @@ def match(data: MatchInput, llm: LLMClient, today: date | None = None) -> MatchR
         )
     return MatchResult(
         matches=_apply_groups(matches, requirements),
-        eligibility=_eligibility_checks(rules, decisions, evidence),
+        eligibility=_eligibility_checks(rules, decisions, evidence, programs),
     )
 
 
 def _eligibility_checks(
-    rules: list[EligibilityRequirement], decisions: MatchDecisions, evidence: dict[str, EvidenceItem]
+    rules: list[EligibilityRequirement],
+    decisions: MatchDecisions,
+    evidence: dict[str, EvidenceItem],
+    programs: list[Program],
 ) -> list[EligibilityCheck]:
     by_id = {d.eligibility_id: d for d in decisions.eligibility}
     checks = []
@@ -104,6 +127,14 @@ def _eligibility_checks(
         d = by_id[rule.id]
         ev = evidence.get(d.evidence_id) if d.evidence_id else None
         status, rationale = d.status, d.rationale
+        if rule.kind in (EligibilityKind.DEGREE_LEVEL, EligibilityKind.ENROLLMENT):
+            # Degree level vs. current program is decided in code when the wording allows
+            # ("rising senior pursuing a BS" is not met by an MS student).
+            judged = judge_degree_rule(f"{rule.description} {rule.jd_quote}", programs)
+            if judged is not None:
+                status = EligibilityStatus(judged[0])
+                rationale = judged[1]
+                ev = evidence.get(judged[2])
         if rule.kind == EligibilityKind.WORK_AUTHORIZATION:
             status = EligibilityStatus.UNKNOWN
             rationale = "Resumes don't show work authorization. Check this yourself before applying."
@@ -180,8 +211,24 @@ def _enforce_strength(bucket: Bucket, req: Requirement, ev: EvidenceItem | None)
     if ev.section == ResumeSection.SKILLS:
         return Bucket.UNDEREMPHASIZED
     if ev.section == ResumeSection.EDUCATION and req.category != SkillCategory.CREDENTIAL:
-        return Bucket.UNDEREMPHASIZED  # coursework lists aren't demonstrated use
+        if _is_concept_coursework(req, ev):
+            return bucket  # concepts like algorithms are normally shown through coursework
+        return Bucket.UNDEREMPHASIZED  # a technology in a course list isn't demonstrated use
     return bucket
+
+
+def _is_concept_coursework(req: Requirement, ev: EvidenceItem | None) -> bool:
+    """A concept backed by an education line: coursework is the normal evidence for fundamentals.
+
+    The line need not repeat the JD's wording: "computer science fundamentals" is shown by a
+    list of CS courses that never says "fundamentals". Specific named technologies are
+    excluded: "Java" in a course list is still only underemphasized.
+    """
+    if ev is None or ev.section != ResumeSection.EDUCATION:
+        return False
+    return req.category == SkillCategory.CONCEPT or (
+        req.category == SkillCategory.TECHNOLOGY and not is_named_product(req.canonical_skill)
+    )
 
 
 def _apply_groups(matches: list[RequirementMatch], requirements: list[Requirement]) -> list[RequirementMatch]:

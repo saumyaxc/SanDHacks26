@@ -38,6 +38,7 @@ def repo(request):
     yield neon
     with neon._pool.connection() as conn:
         conn.execute("DELETE FROM analyses WHERE session_id LIKE 'test-%'")
+        conn.execute("DELETE FROM dismissed_gaps WHERE session_id LIKE 'test-%'")
     neon.close()
 
 
@@ -99,3 +100,24 @@ def test_known_skills_are_distinct_sorted_and_per_session(repo):
     repo.save(_result(s, 1, ("docker", "aws")), "h2")
     repo.save(_result(_session(), 0, ("rust",)), "h1")
     assert repo.known_skills(s) == ["aws", "docker", "python"]
+
+
+def test_delete_only_within_session(repo):
+    s = _session()
+    r = _result(s)
+    repo.save(r, "h1")
+    assert repo.delete(_session(), r.id) is False
+    assert repo.delete(s, r.id) is True
+    assert repo.get(r.id) is None and repo.find_by_hash(s, "h1") is None
+    assert repo.delete(s, r.id) is False
+
+
+def test_dismiss_and_restore_gaps(repo):
+    s = _session()
+    repo.dismiss_gap(s, "docker")
+    repo.dismiss_gap(s, "docker")  # idempotent
+    repo.dismiss_gap(s, "aws")
+    assert repo.dismissed_gaps(s) == ["aws", "docker"]
+    assert repo.dismissed_gaps(_session()) == []
+    repo.restore_gap(s, "docker")
+    assert repo.dismissed_gaps(s) == ["aws"]

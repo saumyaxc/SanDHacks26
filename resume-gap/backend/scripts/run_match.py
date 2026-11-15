@@ -16,6 +16,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.domain.enums import Bucket
+from app.domain.redact import redact_resume  # same cleaning as the API
 from app.domain.schemas import (
     ExtractEvidenceInput,
     ExtractRequirementsInput,
@@ -61,7 +62,7 @@ def main() -> None:
 
     start = time.perf_counter()
     try:
-        evidence = extract_evidence(ExtractEvidenceInput(resume_text=resume_path.read_text(encoding="utf-8")), llm)
+        evidence = extract_evidence(ExtractEvidenceInput(resume_text=redact_resume(resume_path.read_text(encoding="utf-8")).text), llm)
     except LLMError as e:
         raise SystemExit(f"evidence extraction FAILED: {e}")
     print(f"evidence: {len(evidence.items)} items ({time.perf_counter() - start:.1f}s)\n")

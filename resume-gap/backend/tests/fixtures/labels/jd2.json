@@ -1,0 +1,104 @@
+{
+  "jd": "jd2.txt",
+  "resume": "mine.txt",
+  "labels": [
+    {
+      "skill": "computer science degree",
+      "category": "credential",
+      "jd_says": "Cybersecurity-related major (Computer Science, Information Technology, Information Systems, International Affairs, Government, Intelligence Studies, Informatics, etc.)",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "machine learning",
+      "category": "concept",
+      "jd_says": "Relevant coursework (Machine Learning, Data Science, Security Analytics, Programming, Computer Systems, Operating Systems, Networking, etc.)",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "python",
+      "category": "technology",
+      "jd_says": "Programming/Scripting: Basic knowledge of Python, PowerShell, or similar scripting languages",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "powershell",
+      "category": "technology",
+      "jd_says": "Programming/Scripting: Basic knowledge of Python, PowerShell, or similar scripting languages",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "communication",
+      "category": "soft_skill",
+      "jd_says": "Clear written communication: able to document what you built so someone else can maintain it, and explain a technical result to a non-technical audience",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "discretion handling sensitive information",
+      "category": "soft_skill",
+      "jd_says": "Sound judgment and discretion handling sensitive information, including an understanding of why confidentiality and need-to-know matter in this field",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "artificial intelligence",
+      "category": "technology",
+      "jd_says": "Proven experience utilizing AI technologies to enhance decision-making, streamline workflows and processes, improve efficiency and drive business outcomes.",
+      "pipeline_said": "underemphasized",
+      "expected": "underemphasized"
+    },
+    {
+      "skill": "data visualization",
+      "category": "concept",
+      "jd_says": "Experience with data visualization tools.",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "cybersecurity",
+      "category": "trait",
+      "jd_says": "Enthusiasm for protecting organizations from emerging threats.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "collaboration",
+      "category": "soft_skill",
+      "jd_says": "Demonstrated ability to work with technical subject matter experts.",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "api integration",
+      "category": "concept",
+      "jd_says": "API Integration: Understanding of how APIs work and basic integration concepts",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "osint",
+      "category": "concept",
+      "jd_says": "OSINT Tools: Familiarity with open-source intelligence (OSINT) gathering techniques and tools",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "technical documentation",
+      "category": "concept",
+      "jd_says": "Documentation: Experience with technical documentation and knowledge management systems",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "intelligence analysis",
+      "category": "domain_knowledge",
+      "jd_says": "Coursework or demonstrated interest in intelligence analysis, investigations, counterintelligence, risk management, or national security",
+      "pipeline_said": "underemphasized",
+      "expected": "underemphasized"
+    }
+  ]
+}

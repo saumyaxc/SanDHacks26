@@ -31,3 +31,18 @@ class AnalysisRepository(ABC):
 
         Fed back into extraction so the same skill gets the same name across JDs.
         """
+
+    @abstractmethod
+    def delete(self, session_id: str, analysis_id: str) -> bool:
+        """Delete one analysis, only if it belongs to `session_id`. True if something was deleted."""
+
+    @abstractmethod
+    def dismiss_gap(self, session_id: str, canonical_skill: str) -> None:
+        """Hide a skill from this session's gap ranking ("Learn next")."""
+
+    @abstractmethod
+    def restore_gap(self, session_id: str, canonical_skill: str) -> None: ...
+
+    @abstractmethod
+    def dismissed_gaps(self, session_id: str) -> list[str]:
+        """Sorted canonical skills this session has hidden."""

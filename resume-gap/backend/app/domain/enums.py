@@ -30,6 +30,16 @@ class SkillCategory(StrEnum):
     TRAIT = "trait"
 
 
+# How each kind of requirement is treated — the one place this is decided:
+#   technology / concept / domain_knowledge -> a real gap if nothing supports it (weekend project);
+#       if the work is there but described differently, it's a rewrite instead.
+#   credential -> checked, never a project (you can't build a degree in a weekend).
+#   soft_skill / trait -> "for your cover letter & interview": shown with any supporting line,
+#       but never a gap, never scored, ranked, or turned into a project. Communication,
+#       multitasking, prioritization, and passion are judged by people, not resume lines.
+INTERVIEW_CATEGORIES = frozenset({SkillCategory.SOFT_SKILL, SkillCategory.TRAIT})
+
+
 class ResumeSection(StrEnum):
     EXPERIENCE = "experience"
     PROJECT = "project"

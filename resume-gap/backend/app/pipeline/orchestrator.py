@@ -67,6 +67,8 @@ def run_analysis(
         id=uuid.uuid4().hex,
         session_id=request.session_id,
         created_at=datetime.now(UTC),
+        jd_text=request.jd_text,
+        resume_label=request.resume_label,
         requirements=requirements,
         evidence=evidence,
         matches=matches,

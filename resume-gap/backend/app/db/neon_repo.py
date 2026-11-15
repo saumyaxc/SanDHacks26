@@ -77,6 +77,36 @@ class NeonRepository(AnalysisRepository):
         return sorted(r[0] for r in rows if r[0])
 
 
+    def delete(self, session_id: str, analysis_id: str) -> bool:
+        with self._pool.connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM analyses WHERE id = %s AND session_id = %s", (analysis_id, session_id)
+            )
+            return cur.rowcount > 0
+
+    def dismiss_gap(self, session_id: str, canonical_skill: str) -> None:
+        with self._pool.connection() as conn:
+            conn.execute(
+                "INSERT INTO dismissed_gaps (session_id, canonical_skill) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (session_id, canonical_skill),
+            )
+
+    def restore_gap(self, session_id: str, canonical_skill: str) -> None:
+        with self._pool.connection() as conn:
+            conn.execute(
+                "DELETE FROM dismissed_gaps WHERE session_id = %s AND canonical_skill = %s",
+                (session_id, canonical_skill),
+            )
+
+    def dismissed_gaps(self, session_id: str) -> list[str]:
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT canonical_skill FROM dismissed_gaps WHERE session_id = %s ORDER BY canonical_skill",
+                (session_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+
 def _load(data: dict) -> AnalysisResult | None:
     # Rows saved before a schema change may no longer validate; skip them rather than 500.
     try:

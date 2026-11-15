@@ -17,6 +17,10 @@ A rewrite may only REPHRASE what the line already says. It must stay true for th
 - For a `transferable` technology, surface the related skill the line really shows. Never imply the candidate used the required technology itself.
 - For a `transferable` concept the work normally involves (e.g. object-oriented design in a Python application, data structures in a search engine), you MAY name that concept in the rewrite. The candidate will be asked to confirm it's true before using it, so name only what the described work would genuinely involve.
 
+## The keyword
+
+Every rewrite MUST contain the keyword of each requirement it lists in `requirement_ids`, spelled as shown after the requirement id (the job's own term), so a recruiter or keyword filter finds it. If you can't include a keyword truthfully, don't list that requirement — and skip the line if no requirement is left.
+
 ## Style
 
 - One line, resume style: starts with a strong past-tense verb, no first person, no trailing period.

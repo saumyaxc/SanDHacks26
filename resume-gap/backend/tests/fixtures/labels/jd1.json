@@ -1,0 +1,153 @@
+{
+  "jd": "jd1.txt",
+  "resume": "mine.txt",
+  "labels": [
+    {
+      "skill": "computer science degree",
+      "category": "credential",
+      "jd_says": "Currently pursuing a Bachelor's or Master's degree in computer science, software engineering, information systems, or a related field",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "data structures and algorithms",
+      "category": "concept",
+      "jd_says": "Coursework or practical experience in data structures, algorithms, databases, and web fundamentals",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "databases",
+      "category": "technology",
+      "jd_says": "Coursework or practical experience in data structures, algorithms, databases, and web fundamentals",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "javascript",
+      "category": "technology",
+      "jd_says": "Proficiency in at least one programming language such as JavaScript/TypeScript or Python",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "typescript",
+      "category": "technology",
+      "jd_says": "Proficiency in at least one programming language such as JavaScript/TypeScript or Python",
+      "pipeline_said": "gap",
+      "expected": "gap"
+    },
+    {
+      "skill": "python",
+      "category": "technology",
+      "jd_says": "Proficiency in at least one programming language such as JavaScript/TypeScript or Python",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "problem solving",
+      "category": "soft_skill",
+      "jd_says": "Strong problem-solving and debugging skills",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "debugging",
+      "category": "concept",
+      "jd_says": "Strong problem-solving and debugging skills",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "communication",
+      "category": "soft_skill",
+      "jd_says": "Good communication and teamwork skills in a fast-paced environment",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "teamwork",
+      "category": "soft_skill",
+      "jd_says": "Good communication and teamwork skills in a fast-paced environment",
+      "pipeline_said": "interview",
+      "expected": "interview"
+    },
+    {
+      "skill": "react",
+      "category": "technology",
+      "jd_says": "Experience with React and Node.js",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "node.js",
+      "category": "technology",
+      "jd_says": "Experience with React and Node.js",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "sql",
+      "category": "technology",
+      "jd_says": "Familiarity with SQL and relational databases such as PostgreSQL",
+      "pipeline_said": "transferable",
+      "expected": "transferable"
+    },
+    {
+      "skill": "postgresql",
+      "category": "technology",
+      "jd_says": "Familiarity with SQL and relational databases such as PostgreSQL",
+      "pipeline_said": "transferable",
+      "expected": "transferable"
+    },
+    {
+      "skill": "rest",
+      "category": "concept",
+      "jd_says": "Experience working with REST APIs and OAuth",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "docker",
+      "category": "technology",
+      "jd_says": "Experience with Docker and a cloud platform (GCP or AWS), including CI/CD pipelines",
+      "pipeline_said": "transferable",
+      "expected": "transferable"
+    },
+    {
+      "skill": "gcp",
+      "category": "technology",
+      "jd_says": "Experience with Docker and a cloud platform (GCP or AWS), including CI/CD pipelines",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "aws",
+      "category": "technology",
+      "jd_says": "Experience with Docker and a cloud platform (GCP or AWS), including CI/CD pipelines",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "ci/cd",
+      "category": "concept",
+      "jd_says": "Experience with Docker and a cloud platform (GCP or AWS), including CI/CD pipelines",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "large language models",
+      "category": "technology",
+      "jd_says": "Interest in applying LLMs and AI tools to internal workflows",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    },
+    {
+      "skill": "artificial intelligence",
+      "category": "concept",
+      "jd_says": "Interest in applying LLMs and AI tools to internal workflows",
+      "pipeline_said": "covered",
+      "expected": "covered"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ class MemoryRepository(AnalysisRepository):
         self._lock = threading.Lock()
         self._results: dict[str, AnalysisResult] = {}  # insertion order == save order
         self._by_hash: dict[tuple[str, str], str] = {}  # (session_id, input_hash) -> analysis id
+        self._dismissed: dict[str, set[str]] = {}  # session_id -> hidden canonical skills
 
     def save(self, result: AnalysisResult, input_hash: str) -> None:
         with self._lock:
@@ -36,3 +37,24 @@ class MemoryRepository(AnalysisRepository):
         with self._lock:
             results = [r for r in self._results.values() if r.session_id == session_id]
         return sorted({req.canonical_skill for r in results for req in r.requirements.requirements})
+
+    def delete(self, session_id: str, analysis_id: str) -> bool:
+        with self._lock:
+            result = self._results.get(analysis_id)
+            if result is None or result.session_id != session_id:
+                return False
+            del self._results[analysis_id]
+            self._by_hash = {k: v for k, v in self._by_hash.items() if v != analysis_id}
+            return True
+
+    def dismiss_gap(self, session_id: str, canonical_skill: str) -> None:
+        with self._lock:
+            self._dismissed.setdefault(session_id, set()).add(canonical_skill)
+
+    def restore_gap(self, session_id: str, canonical_skill: str) -> None:
+        with self._lock:
+            self._dismissed.get(session_id, set()).discard(canonical_skill)
+
+    def dismissed_gaps(self, session_id: str) -> list[str]:
+        with self._lock:
+            return sorted(self._dismissed.get(session_id, set()))

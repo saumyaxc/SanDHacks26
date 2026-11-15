@@ -4,7 +4,9 @@
 - An any_of_group counts once, at its best member's credit (knowing 1 of 3 listed languages
   is a full match, not 33%).
 - percent = weighted credit / total weight.
-- Traits (interest, mindset) are excluded: a resume can't prove them, so they don't count against you.
+- Soft skills and traits are excluded (see INTERVIEW_CATEGORIES): they're judged in interviews,
+  so they don't count for or against you here. Credentials (degrees, certifications) are
+  excluded too: they're qualifications, shown alongside the eligibility checks.
 - Failing an eligibility rule overrides the verdict: skills don't matter if you can't apply.
 
 Verdict thresholds are deliberately simple and shown with the number, not instead of it.

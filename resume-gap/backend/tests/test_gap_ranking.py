@@ -139,3 +139,14 @@ def test_traits_are_not_ranked():
 def test_traits_do_not_lower_the_match_score():
     r = _result("a", "Job A", [("python", "covered"), ("passion for pinterest", "gap", "required", "trait")])
     assert (r.match_score.percent, r.match_score.required_total) == (100, 1)
+
+
+def test_soft_skills_are_interview_material_not_gaps():
+    r = _result("a", "Job A", [("python", "covered"), ("communication", "gap", "required", "soft_skill")])
+    assert rank_gaps([r, _result("b", "Job B", [("communication", "gap", "required", "soft_skill")], days=1)]).gaps == []
+    assert (r.match_score.percent, r.match_score.required_total) == (100, 1)
+
+
+def test_credentials_are_qualifications_not_part_of_the_skill_score():
+    r = _result("a", "Job A", [("python", "covered"), ("computer science degree", "gap", "required", "credential")])
+    assert (r.match_score.percent, r.match_score.required_total) == (100, 1)

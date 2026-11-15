@@ -65,10 +65,10 @@ def test_analyze_runs_all_stages_with_fake_llm(client):
         "underemphasized",
         "covered",
     ]
-    assert len(data["rewrites"]["rewrites"]) == 1
+    assert data["rewrites"]["rewrites"] == []  # nothing honest to rewrite in the demo data -> no LLM call
     assert len(data["recommendations"]["recommendations"]) == 2
     assert sorted(name for name, _ in llm.calls) == sorted(
-        ["RequirementsExtraction", "EvidenceExtraction", "MatchDecisions", "RewriteDrafts", "GapRecommendationDrafts"]
+        ["RequirementsExtraction", "EvidenceExtraction", "MatchDecisions", "GapRecommendationDrafts"]
     )
 
 
@@ -108,7 +108,7 @@ def test_cache_is_per_session(client):
     _use(llm)
     a = client.post("/api/analyze", json=_body(session_id="s1")).json()
     b = client.post("/api/analyze", json=_body(session_id="s2")).json()
-    assert a["id"] != b["id"] and len(llm.calls) == 10
+    assert a["id"] != b["id"] and len(llm.calls) == 8  # 4 calls per fresh analysis
 
 
 def test_failed_analysis_is_not_stored(client, repo):
@@ -155,7 +155,7 @@ def test_history_lists_summaries_newest_first_and_gets_by_id(client):
 
 def test_gap_ranking_endpoint(client):
     _use(FakeLLMClient())
-    assert client.get("/api/sessions/s1/gaps").json() == {"analysis_count": 0, "gaps": []}
+    assert client.get("/api/sessions/s1/gaps").json() == {"analysis_count": 0, "gaps": [], "dismissed": []}
     client.post("/api/analyze", json=_body())
     ranking = client.get("/api/sessions/s1/gaps").json()
     # Fake analysis: kubernetes (required gap) = 2, aws (preferred transferable) = 0.5
@@ -172,4 +172,48 @@ def test_pasted_resume_contact_info_never_reaches_the_llm(client):
     for _, prompt in llm.calls:
         for secret in ("alex@x.io", "555-1234", "github.com/alexr", "Alex Rivera"):
             assert secret not in prompt
-    assert r.json()["match_score"]["percent"] == 62  # fake data: (2 + 0 + 0.4 + 1.6 + 1) / 8
+    # Fake data: python 2 + k8s 0 + aws 0.4 + postgres 1.6 over weight 7; communication is
+    # a soft skill (interview material), so it's left out.
+    assert r.json()["match_score"]["percent"] == 57
+
+
+def test_delete_analysis_is_scoped_to_session(client):
+    _use(FakeLLMClient())
+    a = client.post("/api/analyze", json=_body()).json()
+    assert client.delete(f"/api/sessions/someone-else/analyses/{a['id']}").status_code == 404
+    assert client.delete(f"/api/sessions/s1/analyses/{a['id']}").status_code == 204
+    assert client.get("/api/sessions/s1/analyses").json() == []
+    assert client.get(f"/api/analyses/{a['id']}").status_code == 404
+
+
+def test_dismissed_gap_is_hidden_then_restorable(client):
+    _use(FakeLLMClient())
+    client.post("/api/analyze", json=_body())
+    assert client.put("/api/sessions/s1/dismissed-gaps/kubernetes").status_code == 204
+    ranking = client.get("/api/sessions/s1/gaps").json()
+    assert [g["canonical_skill"] for g in ranking["gaps"]] == ["aws"]
+    assert ranking["dismissed"] == ["kubernetes"]
+    client.delete("/api/sessions/s1/dismissed-gaps/kubernetes")
+    assert [g["canonical_skill"] for g in client.get("/api/sessions/s1/gaps").json()["gaps"]] == ["kubernetes", "aws"]
+
+
+def test_ranked_gaps_carry_their_projects_and_the_saved_jd(client):
+    _use(FakeLLMClient())
+    a = client.post("/api/analyze", json=_body(jd_text="Backend Engineer at Acme, needs K8s")).json()
+    assert a["jd_text"] == "Backend Engineer at Acme, needs K8s"
+    k8s = client.get("/api/sessions/s1/gaps").json()["gaps"][0]
+    assert k8s["canonical_skill"] == "kubernetes"
+    assert len(k8s["recommendation"]["projects"]) == 2
+    assert k8s["occurrences"][0]["requirement_id"] == "req-2"
+
+
+def test_same_job_with_two_resumes_shares_a_job_key(client):
+    _use(FakeLLMClient())
+    client.post("/api/analyze", json=_body(resume_label="old.pdf"))
+    client.post("/api/analyze", json=_body(resume_text=_default_resume() + "\n- Extra line", resume_label="new.pdf"))
+    client.post("/api/analyze", json=_body(jd_text="A different job entirely"))
+    rows = client.get("/api/sessions/s1/analyses").json()
+    assert [r["resume_label"] for r in rows] == ["", "new.pdf", "old.pdf"]  # newest first
+    assert rows[1]["job_key"] == rows[2]["job_key"] != rows[0]["job_key"]
+    # The ranking counts that job once, not once per resume.
+    assert client.get("/api/sessions/s1/gaps").json()["analysis_count"] == 2

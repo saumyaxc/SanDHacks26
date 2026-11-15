@@ -90,6 +90,9 @@ export interface AnalysisResult {
   id: string
   session_id: string
   created_at: string
+  jd_text: string // the saved job posting ("" for analyses saved before JDs were stored)
+  resume_label: string // which resume it was run with ("resume.pdf", "pasted text")
+  job_key: string // equal for analyses of the same job posting
   requirements: {
     role_title: string
     company: string | null
@@ -110,6 +113,8 @@ export interface AnalysisSummary {
   company: string | null
   bucket_counts: Record<Bucket, number>
   match_percent: number
+  job_key: string
+  resume_label: string
 }
 
 export interface ParsedResume {
@@ -126,16 +131,19 @@ export interface RankedGap {
   required_count: number
   occurrences: {
     analysis_id: string
+    requirement_id: string
     role_title: string
     company: string | null
     bucket: Bucket
     priority: Priority
   }[] // newest first
+  recommendation: GapRecommendation | null // newest projects suggested for this skill
 }
 
 export interface GapRanking {
   analysis_count: number
   gaps: RankedGap[]
+  dismissed: string[] // canonical skills hidden from "Learn next"
 }
 
 export class ApiError extends Error {
@@ -147,6 +155,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await send(path, init)
+  return res.json() as Promise<T>
+}
+
+/** For endpoints that return 204 No Content. */
+async function requestNoContent(path: string, init?: RequestInit): Promise<void> {
+  await send(path, init)
+}
+
+async function send(path: string, init?: RequestInit): Promise<Response> {
   let res: Response
   try {
     res = await fetch(`/api${path}`, init)
@@ -154,7 +172,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, "Can't reach the server. Is the backend running?")
   }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res))
-  return res.json() as Promise<T>
+  return res
 }
 
 async function errorMessage(res: Response): Promise<string> {
@@ -173,12 +191,33 @@ async function errorMessage(res: Response): Promise<string> {
   return `Request failed (${res.status})`
 }
 
-export function analyze(sessionId: string, jdText: string, resumeText: string): Promise<AnalysisResult> {
+export function analyze(
+  sessionId: string,
+  jdText: string,
+  resumeText: string,
+  resumeLabel: string,
+): Promise<AnalysisResult> {
   return request('/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, jd_text: jdText, resume_text: resumeText }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      jd_text: jdText,
+      resume_text: resumeText,
+      resume_label: resumeLabel,
+    }),
   })
+}
+
+/** Past analyses grouped by job posting, newest job first; each job's versions newest first. */
+export function groupByJob(items: AnalysisSummary[]): AnalysisSummary[][] {
+  const groups = new Map<string, AnalysisSummary[]>()
+  for (const item of items) {
+    const group = groups.get(item.job_key)
+    if (group) group.push(item)
+    else groups.set(item.job_key, [item])
+  }
+  return [...groups.values()]
 }
 
 export function parseResumePdf(file: File): Promise<ParsedResume> {
@@ -193,6 +232,26 @@ export function listAnalyses(sessionId: string): Promise<AnalysisSummary[]> {
 
 export function getGapRanking(sessionId: string): Promise<GapRanking> {
   return request(`/sessions/${encodeURIComponent(sessionId)}/gaps`)
+}
+
+export function deleteAnalysis(sessionId: string, id: string): Promise<void> {
+  return requestNoContent(`/sessions/${encodeURIComponent(sessionId)}/analyses/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function dismissGap(sessionId: string, canonicalSkill: string): Promise<void> {
+  return requestNoContent(
+    `/sessions/${encodeURIComponent(sessionId)}/dismissed-gaps/${encodeURIComponent(canonicalSkill)}`,
+    { method: 'PUT' },
+  )
+}
+
+export function restoreGap(sessionId: string, canonicalSkill: string): Promise<void> {
+  return requestNoContent(
+    `/sessions/${encodeURIComponent(sessionId)}/dismissed-gaps/${encodeURIComponent(canonicalSkill)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function getAnalysis(id: string): Promise<AnalysisResult> {
