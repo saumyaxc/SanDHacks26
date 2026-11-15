@@ -32,6 +32,9 @@ def _clean(extraction: RequirementsExtraction) -> RequirementsExtraction:
         requirements=[
             r.model_copy(update={"id": f"req-{i}"}) for i, r in enumerate(requirements, start=1)
         ],
+        eligibility=[
+            e.model_copy(update={"id": f"elig-{i}"}) for i, e in enumerate(extraction.eligibility, start=1)
+        ],
     )
 
 

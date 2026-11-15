@@ -9,13 +9,14 @@ One requirement per distinct skill, tool, area of knowledge, or credential the r
 Include:
 - Languages, frameworks, tools, platforms, databases, cloud providers
 - Technical concepts (e.g. distributed systems, CI/CD, system design)
-- Domain knowledge, including stated interest/passion for a field (e.g. "passion for cybersecurity" -> "Cybersecurity")
+- Domain knowledge: actual knowledge of or experience in a field ("experience with payment systems" -> "Payments")
+- Traits: stated interest, passion, enthusiasm, values, or mindset ("Passion for Pinterest", "interest in fintech", "growth mindset", "comfort with ambiguity") — category `trait`
 - Degrees, certifications, licenses (see Degrees below)
 - Soft skills ONLY when explicitly stated as a requirement (e.g. "strong written communication", "discretion handling sensitive information")
 
 Skip:
 - Company description, mission, benefits, salary, location, EEO/legal/export-control text
-- Eligibility logistics: enrollment status, graduation dates, courses remaining, work authorization, age, availability, on-site/hybrid
+- Logistics: age, availability, start dates, location, on-site/hybrid (but see Eligibility below for degree level, enrollment, graduation dates, work authorization)
 - Generic fluff ("passionate", "self-starter", "fast-paced environment") unless it names a concrete skill
 - Responsibilities that don't imply a specific skill
 
@@ -35,8 +36,9 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
   - `concept`: a practice, method, or technical area that isn't one named product (CI/CD, debugging, system design, data visualization, API integration, technical documentation, machine learning, artificial intelligence)
   - Test: could a resume line name it as one specific thing? If not, it is `concept` — even when the JD adds "tools" or "technologies". "AI tools" -> concept. "Data visualization tools" -> concept. "OSINT tools" -> concept. "Tableau" -> technology.
   - `domain_knowledge`: industry or business-area knowledge
-  - `soft_skill`: interpersonal or communication skills
+  - `soft_skill`: interpersonal skills a resume line can show (communication, leadership, teamwork, mentoring)
   - `credential`: degrees, certifications, licenses
+  - `trait`: interest, passion, enthusiasm, values, or mindset — something a resume can't prove, like "passion for Pinterest", "interest in financial services", "growth mindset", "comfort with ambiguity", "willingness to learn". Split a list of them into separate traits. Interest in a field is a `trait`; knowledge of a field is `domain_knowledge`.
 - `priority`: decide from WHERE and HOW the JD states the requirement.
   - `required`: stated in a requirements / qualifications / "what you'll need" / "what it takes" section without a softening qualifier.
   - `preferred`:
@@ -56,9 +58,21 @@ Typically 8–20 requirements. If the same skill appears twice, extract it once.
 
 ## Degrees
 
-Skip degree lines that only describe current enrollment ("currently pursuing", "enrolled in", "courses remaining").
+Lines about the candidate's current enrollment, degree level, or graduation dates are Eligibility (below), not requirements.
 Otherwise, a degree statement becomes ONE `credential` requirement, no matter how many fields it lists. Name it after the first field listed plus "degree".
 "Bachelor's in computer science, software engineering, or a related field required" -> one requirement, skill "Computer Science degree".
+
+## Eligibility
+
+Separately from requirements, list every hard condition on WHO can apply, in `eligibility`:
+- `degree_level`: "currently pursuing a Bachelor's degree", "must be an undergraduate", "PhD candidates only"
+- `enrollment`: "currently enrolled", "must be returning to school after the internship"
+- `graduation_window`: "graduating between December 2026 and June 2027", "class of 2027"
+- `work_authorization`: "must be authorized to work in the US", "no visa sponsorship"
+- `other`: any other hard condition on the candidate (not a skill)
+
+Fields: `id` ("elig-1", "elig-2", ...), `kind`, `description` (short and specific, keep exact dates and degree names), `jd_quote` (verbatim).
+Do not put eligibility conditions in `requirements`. Use an empty list if there are none.
 
 ## Known skills
 

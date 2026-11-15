@@ -1,10 +1,12 @@
 import json
+from datetime import date
 
 import pytest
 
 from app.domain.enums import Bucket, Priority
 from app.domain.quotes import quote_in_text
 from app.domain.schemas import (
+    EligibilityRequirement,
     EvidenceExtraction,
     ExtractEvidenceInput,
     ExtractRequirementsInput,
@@ -627,3 +629,91 @@ def test_full_default_fake_pipeline():
     assert [r.evidence_id for r in rewrites.rewrites] == ["ev-2"]
     assert rewrites.rewrites[0].original_line in _default_resume()
     assert [r.requirement_id for r in recs.recommendations] == ["req-2", "req-3"]
+
+
+# ---------- eligibility, traits, optional group members, implied concepts ----------
+
+
+def _elig(id: str, kind: str, description: str = "rule") -> dict:
+    return {"id": id, "kind": kind, "description": description, "jd_quote": f"quote for {description}"}
+
+
+def _match_with_eligibility(rules: list[dict], ev_items: list[dict], elig_attempts: list[list[dict]]):
+    inp = _match_input([_req("req-1", "Python")], ev_items)
+    inp.requirements.eligibility = [EligibilityRequirement.model_validate(r) for r in rules]
+    responses = [
+        json.dumps({"decisions": [_decision("req-1", "covered", ev_items[0]["id"])], "eligibility": e})
+        for e in elig_attempts
+    ]
+    llm = FakeLLMClient({"MatchDecisions": responses})
+    return match(inp, llm, today=date(2026, 11, 14)), llm
+
+
+def test_eligibility_checks_quote_evidence_and_never_infer_work_authorization():
+    degree = _ev("ev-9", "B.S. Computer Science, expected May 2027", [], "education")
+    rules = [_elig("elig-1", "graduation_window", "Graduating 2027"), _elig("elig-2", "work_authorization")]
+    decisions = [
+        {"eligibility_id": "elig-1", "status": "met", "evidence_id": "ev-9", "rationale": "May 2027 is in range."},
+        {"eligibility_id": "elig-2", "status": "met", "evidence_id": "ev-9", "rationale": "US school."},
+    ]
+    result, llm = _match_with_eligibility(rules, [EV_BULLET, degree], [decisions])
+    grad, auth = result.eligibility
+    assert (grad.status, grad.evidence_quote) == ("met", degree["line"])
+    assert (auth.status, auth.evidence_quote) == ("unknown", None)  # overridden: never inferred
+    assert "Today's date: 2026-11-14" in llm.calls[0][1]
+
+
+def test_eligibility_retries_when_a_rule_is_missing():
+    rules = [_elig("elig-1", "degree_level")]
+    good = [{"eligibility_id": "elig-1", "status": "unknown", "rationale": "Not stated."}]
+    result, llm = _match_with_eligibility(rules, [EV_BULLET], [[], good])
+    assert len(llm.calls) == 2 and result.eligibility[0].status == "unknown"
+
+
+def test_requirements_eligibility_is_renumbered():
+    payload = {
+        "role_title": "Intern",
+        "requirements": [_req("x", "Python")],
+        "eligibility": [_elig("a", "enrollment"), _elig("b", "degree_level")],
+    }
+    llm = FakeLLMClient({"RequirementsExtraction": json.dumps(payload)})
+    result = extract_requirements(ExtractRequirementsInput(jd_text="jd"), llm)
+    assert [e.id for e in result.eligibility] == ["elig-1", "elig-2"]
+
+
+def test_other_group_members_become_optional_once_one_is_met():
+    reqs = [_req("req-1", "Python", group="group-1"), _req("req-2", "Java", group="group-1")]
+    java = _ev("ev-2", "Skills: Python, Java", [("Java", "java"), ("Python", "python")], "skills")
+    inp = _match_input(reqs, [EV_BULLET, java])
+    result = _run_match(inp, [_decision("req-1", "covered", "ev-1"), _decision("req-2", "underemphasized", "ev-2")])
+    assert [(m.bucket, m.satisfied_by) for m in result.matches] == [
+        (Bucket.COVERED, None),
+        (Bucket.UNDEREMPHASIZED, "req-1"),  # still shown, but optional
+    ]
+
+
+def test_rewrite_for_implied_concept_needs_confirmation_but_technology_does_not():
+    oop = _req("req-1", "OOP", "object oriented programming")
+    oop["category"] = "concept"
+    reqs = [oop, _req("req-2", "AWS")]
+    app_line = _ev("ev-6", "Built a journaling app in Python with a FastAPI backend", [], "project")
+    matches = [_m("req-1", "transferable", app_line), _m("req-2", "transferable", EV_CLOUD)]
+    inp = _rewrite_input(reqs, [app_line, EV_CLOUD], matches)
+    drafts = [
+        _draft("ev-6", "Built a journaling app in Python using object-oriented design with a FastAPI backend", ["req-1"]),
+        _draft("ev-5", "Deployed services to Google Cloud Run in 3 regions", ["req-2"]),
+    ]
+    result, _ = _run_rewrites(inp, drafts)
+    assert {r.evidence_id: r.needs_confirmation for r in result.rewrites} == {"ev-6": True, "ev-5": False}
+
+
+def test_recommend_skips_traits_and_implied_concepts():
+    trait = _req("req-1", "Passion for Pinterest", "passion for pinterest")
+    trait["category"] = "trait"
+    oop = _req("req-2", "OOP", "object oriented programming")
+    oop["category"] = "concept"
+    reqs = [trait, oop, _req("req-3", "Kubernetes")]
+    matches = [_m("req-1", "gap"), _m("req-2", "transferable", EV_BULLET), _m("req-3", "gap")]
+    result, llm = _run_recommend(_recommend_input(reqs, matches), [[_rec("req-3")]])
+    assert [r.requirement_id for r in result.recommendations] == ["req-3"]
+    assert "Pinterest" not in llm.calls[0][1] and "OOP" not in llm.calls[0][1]

@@ -2,7 +2,9 @@
 
 export type Bucket = 'covered' | 'underemphasized' | 'transferable' | 'gap'
 export type Priority = 'required' | 'preferred'
-export type SkillCategory = 'technology' | 'concept' | 'domain_knowledge' | 'soft_skill' | 'credential'
+export type SkillCategory = 'technology' | 'concept' | 'domain_knowledge' | 'soft_skill' | 'credential' | 'trait'
+export type EligibilityKind = 'degree_level' | 'enrollment' | 'graduation_window' | 'work_authorization' | 'other'
+export type EligibilityStatus = 'met' | 'not_met' | 'unknown'
 export type ResumeSection = 'experience' | 'project' | 'education' | 'skills' | 'other'
 export type ResourceType = 'official_docs' | 'course' | 'tutorial' | 'book' | 'video' | 'practice'
 
@@ -20,6 +22,21 @@ export interface Requirement {
   jd_quote: string
 }
 
+export interface EligibilityRequirement {
+  id: string
+  kind: EligibilityKind
+  description: string
+  jd_quote: string
+}
+
+export interface EligibilityCheck {
+  eligibility_id: string
+  status: EligibilityStatus
+  evidence_id: string | null
+  evidence_quote: string | null
+  rationale: string
+}
+
 export interface EvidenceItem {
   id: string
   section: ResumeSection
@@ -33,7 +50,7 @@ export interface RequirementMatch {
   evidence_id: string | null
   evidence_quote: string | null
   rationale: string
-  satisfied_by: string | null
+  satisfied_by: string | null // another member of its "any one of" list already meets the job's need
 }
 
 export interface Rewrite {
@@ -42,6 +59,7 @@ export interface Rewrite {
   suggested_line: string
   requirement_ids: string[]
   reason: string
+  needs_confirmation: boolean // names something the line implies but doesn't state: "only if true"
 }
 
 export interface ProjectIdea {
@@ -59,15 +77,30 @@ export interface GapRecommendation {
   resource_url_verified: boolean // false -> resource_url is a search link
 }
 
+export type Verdict = 'strong' | 'tailor' | 'stretch' | 'not_eligible'
+
+export interface MatchScore {
+  percent: number // 0-100, required skills weighted double
+  required_met: number
+  required_total: number
+  verdict: Verdict
+}
+
 export interface AnalysisResult {
   id: string
   session_id: string
   created_at: string
-  requirements: { role_title: string; company: string | null; requirements: Requirement[] }
+  requirements: {
+    role_title: string
+    company: string | null
+    requirements: Requirement[]
+    eligibility: EligibilityRequirement[]
+  }
   evidence: { items: EvidenceItem[] }
-  matches: { matches: RequirementMatch[] }
+  matches: { matches: RequirementMatch[]; eligibility: EligibilityCheck[] }
   rewrites: { rewrites: Rewrite[] }
   recommendations: { recommendations: GapRecommendation[] }
+  match_score: MatchScore
 }
 
 export interface AnalysisSummary {
@@ -76,6 +109,12 @@ export interface AnalysisSummary {
   role_title: string
   company: string | null
   bucket_counts: Record<Bucket, number>
+  match_percent: number
+}
+
+export interface ParsedResume {
+  text: string // contact details already removed
+  removed: string[] // e.g. ["name", "email", "link"]
 }
 
 export interface RankedGap {
@@ -140,6 +179,12 @@ export function analyze(sessionId: string, jdText: string, resumeText: string): 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, jd_text: jdText, resume_text: resumeText }),
   })
+}
+
+export function parseResumePdf(file: File): Promise<ParsedResume> {
+  const form = new FormData()
+  form.append('file', file)
+  return request('/resume/pdf', { method: 'POST', body: form })
 }
 
 export function listAnalyses(sessionId: string): Promise<AnalysisSummary[]> {

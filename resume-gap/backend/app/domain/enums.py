@@ -23,8 +23,11 @@ class SkillCategory(StrEnum):
     # Practices, methods, knowledge areas: CI/CD, debugging, data visualization, financial modeling.
     CONCEPT = "concept"
     DOMAIN_KNOWLEDGE = "domain_knowledge"  # fintech, healthcare, e-commerce
-    SOFT_SKILL = "soft_skill"  # communication, leadership
+    SOFT_SKILL = "soft_skill"  # communication, leadership — things a resume line can show
     CREDENTIAL = "credential"  # degree, certification, license
+    # Interest, passion, mindset ("passion for Pinterest", "growth mindset"). Not resume-provable:
+    # shown separately as cover-letter/interview material, never scored or ranked as a gap.
+    TRAIT = "trait"
 
 
 class ResumeSection(StrEnum):
@@ -42,3 +45,19 @@ class ResourceType(StrEnum):
     BOOK = "book"
     VIDEO = "video"
     PRACTICE = "practice"  # hands-on practice platform or exercises
+
+
+class EligibilityKind(StrEnum):
+    """Hard requirements about the candidate, not skills: failing one means don't apply."""
+
+    DEGREE_LEVEL = "degree_level"  # "pursuing a Bachelor's", "PhD required"
+    ENROLLMENT = "enrollment"  # "currently enrolled", "returning to school after the internship"
+    GRADUATION_WINDOW = "graduation_window"  # "graduating between Dec 2026 and Jun 2027"
+    WORK_AUTHORIZATION = "work_authorization"  # never inferred from a resume
+    OTHER = "other"
+
+
+class EligibilityStatus(StrEnum):
+    MET = "met"
+    NOT_MET = "not_met"
+    UNKNOWN = "unknown"  # the resume doesn't say; the candidate must check

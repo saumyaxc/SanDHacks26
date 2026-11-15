@@ -11,8 +11,11 @@ import {
   type AnalysisSummary,
   type GapRanking,
 } from './api'
+import { EmptyState } from './components/EmptyState'
 import { History } from './components/History'
+import { Loading } from './components/Loading'
 import { Results } from './components/Results'
+import { ResumeInput } from './components/ResumeInput'
 import { TopGaps } from './components/TopGaps'
 import './App.css'
 
@@ -27,7 +30,9 @@ export default function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisSummary[]>([])
   const [ranking, setRanking] = useState<GapRanking | null>(null)
-  const resultsRef = useRef<HTMLDivElement>(null)
+  // After an analysis the inputs fold away so the sidebar has room for history and gaps.
+  const [inputsOpen, setInputsOpen] = useState(true)
+  const mainRef = useRef<HTMLElement>(null)
 
   // History and ranking are conveniences: if they fail, the main flow still works.
   function loadSidebar(isCancelled: () => boolean = () => false) {
@@ -48,16 +53,25 @@ export default function App() {
     }
   }, [])
 
-  // Tick the "Analyzing… Ns" counter while a request is in flight.
+  // Tick the elapsed-seconds counter while a request is in flight.
   useEffect(() => {
     if (!loading) return
     const timer = setInterval(() => setElapsed((s) => s + 1), 1000)
     return () => clearInterval(timer)
   }, [loading])
 
+  function scrollToMain() {
+    // Only matters on narrow screens, where results sit below the form.
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    requestAnimationFrame(() =>
+      mainRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }),
+    )
+  }
+
   function showResult(r: AnalysisResult) {
     setResult(r)
-    requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    setInputsOpen(false)
+    scrollToMain()
   }
 
   async function onSubmit(e: SubmitEvent<HTMLFormElement>) {
@@ -65,6 +79,7 @@ export default function App() {
     setError(null)
     setElapsed(0)
     setLoading(true)
+    scrollToMain()
     try {
       showResult(await analyze(sessionId, jd, resume))
       loadSidebar()
@@ -73,6 +88,16 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Start over for a new job: clear the old job description and result, keep the resume.
+  function startNewAnalysis() {
+    setJd('')
+    setResult(null)
+    setError(null)
+    setInputsOpen(true)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' })
   }
 
   async function onSelectHistory(id: string) {
@@ -90,41 +115,66 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>resume-gap</h1>
-        <p className="muted">
-          See which job requirements your resume backs up — with the exact line as proof — and what to build for the rest.
-        </p>
+        <div>
+          <h1>resume-gap</h1>
+          <p className="muted">
+            See which job requirements your resume backs up — with the exact line as proof — and what to build for the
+            rest.
+          </p>
+        </div>
+        {(result || loading) && (
+          <button type="button" className="button-primary button-new" onClick={startNewAnalysis} disabled={loading}>
+            + New analysis
+          </button>
+        )}
       </header>
 
       <div className="layout">
         <aside className="sidebar">
-          <form className="inputs" onSubmit={onSubmit}>
-            <TextBox label="Job description" value={jd} onChange={setJd} placeholder="Paste the full job posting" />
-            <TextBox label="Your resume" value={resume} onChange={setResume} placeholder="Paste your resume as plain text" />
-            <button type="submit" className="button-primary" disabled={!canSubmit}>
-              {loading ? `Analyzing… ${elapsed}s` : 'Analyze'}
-            </button>
-            {loading && <p className="muted small">Usually takes 10–20 seconds.</p>}
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
-          </form>
+          {inputsOpen ? (
+            <form className="inputs" onSubmit={onSubmit}>
+              <TextBox label="Job description" value={jd} onChange={setJd} placeholder="Paste the full job posting" />
+              <ResumeInput value={resume} onChange={setResume} />
+              <button type="submit" className="button-primary" disabled={!canSubmit}>
+                {loading ? 'Analyzing…' : 'Analyze'}
+              </button>
+              {result && !loading && (
+                <button type="button" className="button-link" onClick={() => setInputsOpen(false)}>
+                  Hide inputs
+                </button>
+              )}
+            </form>
+          ) : (
+            <div className="inputs-collapsed">
+              <div>
+                <p className="small muted">Inputs</p>
+                <p className="small">
+                  {jd.trim() ? `Job: ${jd.length.toLocaleString()} chars` : 'Job: from history'} ·{' '}
+                  {resume.trim() ? `Resume: ${resume.length.toLocaleString()} chars` : 'Resume: from history'}
+                </p>
+              </div>
+              <button type="button" className="button-small" onClick={() => setInputsOpen(true)}>
+                Edit inputs
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
           <TopGaps ranking={ranking} onOpen={onSelectHistory} />
           <History items={history} activeId={result?.id ?? null} onSelect={onSelectHistory} />
         </aside>
 
-        <main className="main" ref={resultsRef}>
-          {result ? (
-            <Results result={result} />
+        <main className="main" ref={mainRef}>
+          {loading ? (
+            <Loading elapsed={elapsed} />
+          ) : result ? (
+            // key: a different analysis starts with fresh tabs and open sections.
+            <Results key={result.id} result={result} />
           ) : (
-            <div className="placeholder">
-              <p>Paste a job description and your resume, then hit Analyze.</p>
-              <p className="muted small">
-                Your text is sent to Google's Gemini API to run the analysis. Leave out your name and contact details.
-              </p>
-            </div>
+            <EmptyState />
           )}
         </main>
       </div>
@@ -152,7 +202,7 @@ function TextBox({
           {value.length.toLocaleString()} / {MAX_INPUT_CHARS.toLocaleString()}
         </span>
       </span>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={10} />
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={8} />
     </label>
   )
 }

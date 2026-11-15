@@ -8,9 +8,18 @@ triggers the client's retry.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, computed_field, model_validator
 
-from .enums import Bucket, Priority, ResourceType, ResumeSection, SkillCategory
+from .enums import (
+    Bucket,
+    EligibilityKind,
+    EligibilityStatus,
+    Priority,
+    ResourceType,
+    ResumeSection,
+    SkillCategory,
+)
+from .scoring import MatchScore, match_score
 from .skills import normalize_skill
 
 MAX_INPUT_CHARS = 20_000
@@ -52,18 +61,30 @@ class Requirement(_Base):
         return self
 
 
+class EligibilityRequirement(_Base):
+    """A hard condition on the candidate (degree level, enrollment, graduation dates, work
+    authorization). Not a skill: it's checked, never scored, ranked, or turned into a project."""
+
+    id: str
+    kind: EligibilityKind
+    description: str  # short and specific: "Pursuing a Bachelor's degree", "Graduating Dec 2026 - Jun 2027"
+    jd_quote: str
+
+
 class RequirementsExtraction(_Base):
     """[LLM OUTPUT]"""
 
     role_title: str
     company: str | None = None
     requirements: list[Requirement]
+    eligibility: list[EligibilityRequirement] = []
 
     @model_validator(mode="after")
     def _validate(self) -> "RequirementsExtraction":
         if not self.requirements:
             raise ValueError("no requirements extracted")
         _check_unique_ids([r.id for r in self.requirements], "requirement")
+        _check_unique_ids([e.id for e in self.eligibility], "eligibility")
         return self
 
 
@@ -129,15 +150,24 @@ class MatchDecision(_Base):
         return self
 
 
+class EligibilityDecision(_Base):
+    eligibility_id: str
+    status: EligibilityStatus
+    evidence_id: str | None = None  # the education line it was judged from, if any
+    rationale: str
+
+
 class MatchDecisions(_Base):
     """[LLM OUTPUT] The LLM picks evidence by id only; code copies the quote.
 
     Validation context (passed by pipeline/match.py):
       requirement_ids: every requirement must get exactly one decision
+      eligibility_ids: every eligibility rule must get exactly one decision
       evidence_ids: every evidence_id must exist
     """
 
     decisions: list[MatchDecision]
+    eligibility: list[EligibilityDecision] = []
 
     @model_validator(mode="after")
     def _validate(self, info: ValidationInfo) -> "MatchDecisions":
@@ -151,8 +181,17 @@ class MatchDecisions(_Base):
             if missing or unknown:
                 raise ValueError(f"decisions must cover each requirement once; missing={missing} unknown={unknown}")
 
+        if (expected := ctx.get("eligibility_ids")) is not None:
+            got_elig = [e.eligibility_id for e in self.eligibility]
+            _check_unique_ids(got_elig, "eligibility")
+            missing = sorted(set(expected) - set(got_elig))
+            unknown = sorted(set(got_elig) - set(expected))
+            if missing or unknown:
+                raise ValueError(f"eligibility must cover each rule once; missing={missing} unknown={unknown}")
+
         if (evidence_ids := ctx.get("evidence_ids")) is not None:
-            bad = sorted({d.evidence_id for d in self.decisions if d.evidence_id and d.evidence_id not in evidence_ids})
+            used = {d.evidence_id for d in self.decisions} | {e.evidence_id for e in self.eligibility}
+            bad = sorted(i for i in used if i and i not in evidence_ids)
             if bad:
                 raise ValueError(f"unknown evidence ids: {bad}")
         return self
@@ -164,7 +203,8 @@ class RequirementMatch(_Base):
     evidence_id: str | None = None
     evidence_quote: str | None = None  # copied by code from the evidence line; never LLM-written
     rationale: str
-    # Set when another member of this requirement's any_of_group is covered/underemphasized.
+    # Set on every other member once one member of the any_of_group is covered/underemphasized:
+    # the job only needs one, so the rest are optional.
     satisfied_by: str | None = None
 
     @model_validator(mode="after")
@@ -179,10 +219,19 @@ class RequirementMatch(_Base):
         return self
 
 
+class EligibilityCheck(_Base):
+    eligibility_id: str
+    status: EligibilityStatus
+    evidence_id: str | None = None
+    evidence_quote: str | None = None  # copied by code from the evidence line
+    rationale: str
+
+
 class MatchResult(_Base):
     """Final stage-3 output, built in pipeline/match.py (not an LLM schema)."""
 
     matches: list[RequirementMatch]
+    eligibility: list[EligibilityCheck] = []
 
 
 # ---------- Stage 4: suggest rewrites ----------
@@ -233,6 +282,9 @@ class Rewrite(_Base):
     suggested_line: str
     requirement_ids: list[str]
     reason: str
+    # True when the rewrite names something the line implies but doesn't state (e.g. OOP for a
+    # Python app). Shown as "only if true": the candidate must confirm it before using it.
+    needs_confirmation: bool = False
 
 
 class RewriteSuggestions(_Base):
@@ -336,6 +388,13 @@ class AnalysisRequest(_Base):
     resume_text: str = Field(min_length=1, max_length=MAX_INPUT_CHARS)
 
 
+class ParsedResume(_Base):
+    """Resume text extracted from an upload, with contact details already removed."""
+
+    text: str
+    removed: list[str]  # kinds removed, e.g. ["name", "email", "link"]
+
+
 class AnalysisResult(_Base):
     id: str
     session_id: str
@@ -346,6 +405,24 @@ class AnalysisResult(_Base):
     rewrites: RewriteSuggestions
     recommendations: GapRecommendations
 
+    # Computed (not stored): recalculated on every load, so old saved analyses get it too.
+    @computed_field
+    @property
+    def match_score(self) -> MatchScore:
+        reqs = {r.id: r for r in self.requirements.requirements}
+        units: dict[str, tuple[Priority, list[Bucket]]] = {}
+        for m in self.matches.matches:
+            req = reqs[m.requirement_id]
+            if req.category == SkillCategory.TRAIT:
+                continue
+            key = req.any_of_group or req.id
+            priority, buckets = units.get(key, (req.priority, []))
+            if req.priority == Priority.REQUIRED:
+                priority = Priority.REQUIRED  # a group is required if any member is
+            units[key] = (priority, [*buckets, m.bucket])
+        ineligible = any(e.status == EligibilityStatus.NOT_MET for e in self.matches.eligibility)
+        return match_score(list(units.values()), ineligible=ineligible)
+
 
 class AnalysisSummary(_Base):
     """One row in a session's history list; the full result is fetched by id."""
@@ -355,6 +432,7 @@ class AnalysisSummary(_Base):
     role_title: str
     company: str | None
     bucket_counts: dict[Bucket, int]
+    match_percent: int
 
     @classmethod
     def from_result(cls, result: AnalysisResult) -> "AnalysisSummary":
@@ -367,6 +445,7 @@ class AnalysisSummary(_Base):
             role_title=result.requirements.role_title,
             company=result.requirements.company,
             bucket_counts=counts,
+            match_percent=result.match_score.percent,
         )
 
 

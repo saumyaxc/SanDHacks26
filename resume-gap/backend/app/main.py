@@ -7,7 +7,7 @@ import logging
 
 from fastapi import FastAPI
 
-from app.api import analyze, health, history
+from app.api import analyze, health, history, resume
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -15,3 +15,4 @@ app = FastAPI(title="resume-gap")
 app.include_router(health.router, prefix="/api")
 app.include_router(analyze.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(resume.router, prefix="/api")

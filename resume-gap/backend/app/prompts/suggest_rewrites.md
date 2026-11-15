@@ -14,7 +14,8 @@ A rewrite may only REPHRASE what the line already says. It must stay true for th
 - Do NOT add numbers, metrics, team sizes, or durations that aren't in the line. Keep every number that is there.
 - Do NOT upgrade the candidate's role ("helped with" must not become "led").
 - You MAY: lead with the strongest skill, use the job's standard term for something the line already describes (e.g. "standardizing documentation" -> "technical documentation"), name the platform of a product the line names (Cloud Run -> Google Cloud Run), make an implied action explicit, and cut filler.
-- For a `transferable` requirement, surface the related skill the line really shows. Never imply the candidate used the required skill itself.
+- For a `transferable` technology, surface the related skill the line really shows. Never imply the candidate used the required technology itself.
+- For a `transferable` concept the work normally involves (e.g. object-oriented design in a Python application, data structures in a search engine), you MAY name that concept in the rewrite. The candidate will be asked to confirm it's true before using it, so name only what the described work would genuinely involve.
 
 ## Style
 

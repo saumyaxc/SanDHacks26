@@ -7,6 +7,8 @@ Guarantees, enforced here rather than trusted to the LLM:
 - A rewrite is dropped if it adds a number, or names a technology from the JD that the
   original line didn't already name — the two most common ways a "rewrite" becomes invention.
 - At most one rewrite per line.
+- A rewrite that surfaces a transferable concept (e.g. naming OOP for a Python app) states
+  something the line only implies, so code marks it needs_confirmation ("only if true").
 """
 
 import logging
@@ -56,6 +58,7 @@ def suggest_rewrites(data: RewriteInput, llm: LLMClient) -> RewriteSuggestions:
     )
 
     technologies = [r for r in requirements.values() if r.category == SkillCategory.TECHNOLOGY]
+    bucket_of = {m.requirement_id: m.bucket for ms in targets.values() for m in ms}
     rewrites: list[Rewrite] = []
     seen: set[str] = set()
     for draft in drafts.rewrites:
@@ -74,6 +77,11 @@ def suggest_rewrites(data: RewriteInput, llm: LLMClient) -> RewriteSuggestions:
                 suggested_line=draft.suggested_line,
                 requirement_ids=list(dict.fromkeys(draft.requirement_ids)),
                 reason=draft.reason,
+                needs_confirmation=any(
+                    bucket_of.get(rid) == Bucket.TRANSFERABLE
+                    and requirements[rid].category != SkillCategory.TECHNOLOGY
+                    for rid in draft.requirement_ids
+                ),
             )
         )
     return RewriteSuggestions(rewrites=rewrites)

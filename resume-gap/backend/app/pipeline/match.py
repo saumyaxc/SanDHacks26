@@ -9,14 +9,20 @@ Guarantees, enforced here rather than trusted to the LLM:
   domain knowledge, and credentials are judged by the LLM.
 - "Covered" means demonstrated: a skills-list line, or a coursework line for a
   non-credential, is downgraded to underemphasized.
-- A requirement satisfied by another member of its any_of_group is marked satisfied_by.
+- Once any member of an any_of_group is covered/underemphasized, every OTHER member is
+  marked satisfied_by: the job needs only one, so the rest are optional.
+- Eligibility checks quote real lines too, and work authorization is always "unknown":
+  it must never be guessed from a resume.
 """
 
+from datetime import date
 from pathlib import Path
 
-from app.domain.enums import Bucket, ResumeSection, SkillCategory
+from app.domain.enums import Bucket, EligibilityKind, EligibilityStatus, ResumeSection, SkillCategory
 from app.domain.skills import skill_names, text_names_any
 from app.domain.schemas import (
+    EligibilityCheck,
+    EligibilityRequirement,
     EvidenceItem,
     MatchDecision,
     MatchDecisions,
@@ -42,18 +48,26 @@ _SECTION_RANK = {
 }
 
 
-def match(data: MatchInput, llm: LLMClient) -> MatchResult:
+def match(data: MatchInput, llm: LLMClient, today: date | None = None) -> MatchResult:
     requirements = data.requirements.requirements
+    rules = data.requirements.eligibility
     items = data.evidence.items
     evidence = {e.id: e for e in items}
 
-    prompt = _PROMPT.replace("{{REQUIREMENTS}}", _format_requirements(requirements)).replace(
-        "{{EVIDENCE}}", _format_evidence(items)
+    prompt = (
+        _PROMPT.replace("{{TODAY}}", (today or date.today()).isoformat())
+        .replace("{{REQUIREMENTS}}", _format_requirements(requirements))
+        .replace("{{ELIGIBILITY}}", _format_eligibility(rules))
+        .replace("{{EVIDENCE}}", _format_evidence(items))
     )
     decisions = llm.complete_json(
         prompt,
         MatchDecisions,
-        context={"requirement_ids": [r.id for r in requirements], "evidence_ids": set(evidence)},
+        context={
+            "requirement_ids": [r.id for r in requirements],
+            "eligibility_ids": [e.id for e in rules],
+            "evidence_ids": set(evidence),
+        },
     )
 
     by_req = {d.requirement_id: d for d in decisions.decisions}
@@ -75,7 +89,35 @@ def match(data: MatchInput, llm: LLMClient) -> MatchResult:
                 rationale=rationale,
             )
         )
-    return MatchResult(matches=_apply_groups(matches, requirements))
+    return MatchResult(
+        matches=_apply_groups(matches, requirements),
+        eligibility=_eligibility_checks(rules, decisions, evidence),
+    )
+
+
+def _eligibility_checks(
+    rules: list[EligibilityRequirement], decisions: MatchDecisions, evidence: dict[str, EvidenceItem]
+) -> list[EligibilityCheck]:
+    by_id = {d.eligibility_id: d for d in decisions.eligibility}
+    checks = []
+    for rule in rules:
+        d = by_id[rule.id]
+        ev = evidence.get(d.evidence_id) if d.evidence_id else None
+        status, rationale = d.status, d.rationale
+        if rule.kind == EligibilityKind.WORK_AUTHORIZATION:
+            status = EligibilityStatus.UNKNOWN
+            rationale = "Resumes don't show work authorization. Check this yourself before applying."
+            ev = None
+        checks.append(
+            EligibilityCheck(
+                eligibility_id=rule.id,
+                status=status,
+                evidence_id=ev.id if ev else None,
+                evidence_quote=ev.line if ev else None,
+                rationale=rationale,
+            )
+        )
+    return checks
 
 
 def _check_technology(
@@ -120,6 +162,10 @@ def _format_requirements(requirements: list[Requirement]) -> str:
     return "\n".join(lines)
 
 
+def _format_eligibility(rules: list[EligibilityRequirement]) -> str:
+    return "\n".join(f'{e.id} | {e.kind} | {e.description} | JD: "{e.jd_quote}"' for e in rules) or "(none)"
+
+
 def _format_evidence(items: list[EvidenceItem]) -> str:
     lines = []
     for e in items:
@@ -153,7 +199,7 @@ def _apply_groups(matches: list[RequirementMatch], requirements: list[Requiremen
     for m in matches:
         group = group_of.get(m.requirement_id)
         winner = best.get(group) if group else None
-        if winner and m.bucket not in _SATISFYING:
+        if winner and m.requirement_id != winner.requirement_id:
             m = m.model_copy(update={"satisfied_by": winner.requirement_id})
         out.append(m)
     return out

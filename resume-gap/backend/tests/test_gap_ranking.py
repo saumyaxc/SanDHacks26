@@ -126,3 +126,16 @@ def test_display_name_is_most_common_spelling():
     for r, raw in ((a, "K8s"), (b, "Kubernetes"), (c, "Kubernetes")):
         r.requirements.requirements[0].skill = raw
     assert rank_gaps([a, b, c]).gaps[0].skill == "Kubernetes"
+
+
+def test_traits_are_not_ranked():
+    results = [
+        _result("a", "Job A", [("passion for pinterest", "gap", "required", "trait")]),
+        _result("b", "Job B", [("growth mindset", "gap", "required", "trait")], days=1),
+    ]
+    assert rank_gaps(results).gaps == []
+
+
+def test_traits_do_not_lower_the_match_score():
+    r = _result("a", "Job A", [("python", "covered"), ("passion for pinterest", "gap", "required", "trait")])
+    assert (r.match_score.percent, r.match_score.required_total) == (100, 1)

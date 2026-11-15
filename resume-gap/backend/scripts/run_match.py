@@ -84,7 +84,15 @@ def main() -> None:
         counts = Counter(m.bucket for m in result.matches)
         summary = "  ".join(f"{b.value} {counts.get(b, 0)}" for b in _ORDER)
         print(f"== {jd_path.name}  {reqs.role_title}  ({elapsed:.1f}s)")
-        print(f"   {summary}\n")
+        print(f"   {summary}")
+        print(f"   match {result_score(reqs, evidence, result)}\n")
+        rules = {e.id: e for e in reqs.eligibility}
+        for check in result.eligibility:
+            rule = rules[check.eligibility_id]
+            print(f"  ELIG {check.status.upper():<8} {rule.kind}: {rule.description}")
+            print(f"  {'':<14}{check.rationale}")
+        if result.eligibility:
+            print()
 
         req_by_id = {r.id: r for r in reqs.requirements}
         for m in result.matches:
@@ -92,7 +100,8 @@ def main() -> None:
             pri = "REQ " if r.priority == "required" else "pref"
             group = f" [{r.any_of_group}]" if r.any_of_group else ""
             sat = f"  (satisfied by {m.satisfied_by})" if m.satisfied_by else ""
-            print(f"  {r.id:<7}{pri} {r.canonical_skill + group:<34} {m.bucket.upper():<16}{m.evidence_id or '':<6}{sat}")
+            cat = " (trait)" if r.category == "trait" else ""
+            print(f"  {r.id:<7}{pri} {r.canonical_skill + group + cat:<34} {m.bucket.upper():<16}{m.evidence_id or '':<6}{sat}")
             if m.evidence_quote:
                 q = m.evidence_quote
                 print(f"  {'':<12}\"{q if len(q) <= _QUOTE_WIDTH else q[: _QUOTE_WIDTH - 3] + '...'}\"")
@@ -103,7 +112,8 @@ def main() -> None:
             continue
         print(f"   rewrites ({len(rewrites.rewrites)})")
         for rw in rewrites.rewrites:
-            print(f"  {rw.evidence_id:<7}for {', '.join(rw.requirement_ids)}")
+            flag = "  [ONLY IF TRUE]" if rw.needs_confirmation else ""
+            print(f"  {rw.evidence_id:<7}for {', '.join(rw.requirement_ids)}{flag}")
             print(f"  {'':<7}- {rw.original_line}")
             print(f"  {'':<7}+ {rw.suggested_line}")
             print(f"  {'':<7}  {rw.reason}")
@@ -116,6 +126,26 @@ def main() -> None:
             mark = "VERIFIED" if rec.resource_url_verified else "search"
             print(f"  {'':<7}[{rec.resource_type}] {rec.resource_title}  ({mark}) {rec.resource_url}")
         print()
+
+
+def result_score(reqs, evidence, matches) -> str:
+    # Build a throwaway AnalysisResult just to reuse the real scoring.
+    from datetime import UTC, datetime
+
+    from app.domain.schemas import AnalysisResult, GapRecommendations, RewriteSuggestions
+
+    r = AnalysisResult(
+        id="x",
+        session_id="x",
+        created_at=datetime.now(UTC),
+        requirements=reqs,
+        evidence=evidence,
+        matches=matches,
+        rewrites=RewriteSuggestions(rewrites=[]),
+        recommendations=GapRecommendations(recommendations=[]),
+    )
+    s = r.match_score
+    return f"{s.percent}% ({s.verdict}), required {s.required_met}/{s.required_total}"
 
 
 if __name__ == "__main__":

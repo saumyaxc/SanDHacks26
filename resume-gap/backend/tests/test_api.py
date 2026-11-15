@@ -161,3 +161,15 @@ def test_gap_ranking_endpoint(client):
     # Fake analysis: kubernetes (required gap) = 2, aws (preferred transferable) = 0.5
     assert ranking["analysis_count"] == 1
     assert [(g["canonical_skill"], g["score"]) for g in ranking["gaps"]] == [("kubernetes", 2.0), ("aws", 0.5)]
+
+
+def test_pasted_resume_contact_info_never_reaches_the_llm(client):
+    llm = FakeLLMClient()
+    _use(llm)
+    resume = "Alex Rivera\nalex@x.io | 858-555-1234 | github.com/alexr\nEXPERIENCE\n" + _default_resume()
+    r = client.post("/api/analyze", json=_body(resume_text=resume))
+    assert r.status_code == 200
+    for _, prompt in llm.calls:
+        for secret in ("alex@x.io", "555-1234", "github.com/alexr", "Alex Rivera"):
+            assert secret not in prompt
+    assert r.json()["match_score"]["percent"] == 62  # fake data: (2 + 0 + 0.4 + 1.6 + 1) / 8

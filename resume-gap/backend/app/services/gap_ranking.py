@@ -6,7 +6,8 @@ Rules:
 - One vote per job: the same (role, company) analyzed again counts only its newest analysis.
 - A gap/transferable match scores 2 if required, 1 if preferred; transferable counts half.
 - Skills are grouped by canonical_skill, which is why extraction reuses known names.
-- Skipped: credentials (a project can't earn a degree), group members another option
+- Skipped: credentials (a project can't earn a degree), traits (interest/mindset aren't
+  learnable gaps), group members another option
   already satisfies, and skills your NEWEST analysis mentioning them shows as covered
   (you've since fixed them).
 """
@@ -35,7 +36,7 @@ def rank_gaps(results: list[AnalysisResult]) -> GapRanking:
         for m in result.matches.matches:
             req = reqs[m.requirement_id]
             skill = req.canonical_skill
-            if req.category == SkillCategory.CREDENTIAL or m.satisfied_by:
+            if req.category in (SkillCategory.CREDENTIAL, SkillCategory.TRAIT) or m.satisfied_by:
                 continue
             first_mention = skill not in seen
             seen.add(skill)

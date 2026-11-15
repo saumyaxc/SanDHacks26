@@ -63,6 +63,14 @@ DEFAULT_RESPONSES: dict[str, str] = {
                     "jd_quote": "Clear written and verbal communication",
                 },
             ],
+            "eligibility": [
+                {
+                    "id": "elig-1",
+                    "kind": "work_authorization",
+                    "description": "Authorized to work in the US",
+                    "jd_quote": "Must be authorized to work in the United States",
+                }
+            ],
         }
     ),
     "EvidenceExtraction": json.dumps(
@@ -140,7 +148,15 @@ DEFAULT_RESPONSES: dict[str, str] = {
                     "evidence_id": "ev-4",
                     "rationale": "Regular presentations to a large audience.",
                 },
-            ]
+            ],
+            "eligibility": [
+                {
+                    "eligibility_id": "elig-1",
+                    "status": "unknown",
+                    "evidence_id": None,
+                    "rationale": "The resume does not state work authorization.",
+                }
+            ],
         }
     ),
     "RewriteDrafts": json.dumps(

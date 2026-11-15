@@ -26,10 +26,10 @@ export function History({
                 {item.company && <span className="muted"> · {item.company}</span>}
               </span>
               <span className="history-meta">
-                {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                <strong>{item.match_percent}% match</strong>
                 {' · '}
-                {item.bucket_counts.covered + item.bucket_counts.underemphasized} have ·{' '}
-                {item.bucket_counts.transferable + item.bucket_counts.gap} to work on
+                {item.bucket_counts.transferable + item.bucket_counts.gap} to work on ·{' '}
+                {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
               </span>
             </button>
           </li>

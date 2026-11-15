@@ -75,3 +75,10 @@ textarea {
   font: inherit;
   color: inherit;
 }
+
+/* Smooth in-page scrolling, unless the user asked their OS for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

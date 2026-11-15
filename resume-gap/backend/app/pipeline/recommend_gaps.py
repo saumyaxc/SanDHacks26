@@ -4,6 +4,9 @@ Code decides which requirements get a recommendation; the LLM only writes them:
 - Only gap/transferable matches, skipping any requirement another any_of_group
   member already satisfies.
 - Credentials are skipped: a weekend project can't earn a degree or certification.
+- Traits are skipped: interest and mindset go in a cover letter, not a project.
+- Transferable concepts are skipped: the work already implies them, so the fix is a
+  rewrite ("only if true"), not a project.
 - Exactly one recommendation per target (validated, retried), returned required-first.
 - Every resource link works: the LLM's URL is shown only if `url_is_live` confirms it;
   otherwise the link is a web search for the resource title, flagged as unverified.
@@ -81,7 +84,8 @@ def _targets(matches: list[RequirementMatch], requirements: dict[str, Requiremen
         for m in matches
         if m.bucket in _TARGET_BUCKETS
         and not m.satisfied_by
-        and requirements[m.requirement_id].category != SkillCategory.CREDENTIAL
+        and requirements[m.requirement_id].category not in (SkillCategory.CREDENTIAL, SkillCategory.TRAIT)
+        and not (m.bucket == Bucket.TRANSFERABLE and requirements[m.requirement_id].category == SkillCategory.CONCEPT)
     ]
     # Required before preferred; JD order within each (sort is stable).
     return sorted(targets, key=lambda m: requirements[m.requirement_id].priority != Priority.REQUIRED)
