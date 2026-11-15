@@ -1,0 +1,376 @@
+.app {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.app-header {
+  margin-bottom: 24px;
+}
+.app-header h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+}
+
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+
+/* ---------- layout ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+@media (min-width: 861px) {
+  .sidebar {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+.main {
+  min-width: 0;
+  scroll-margin-top: 16px;
+}
+
+/* ---------- inputs ---------- */
+
+.inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.textbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.textbox-label {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.counter {
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.counter.over {
+  color: var(--gap);
+  font-weight: 600;
+}
+.textbox textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.textbox textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.button-primary {
+  padding: 11px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-small {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.82rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--gap-bg);
+  color: var(--gap);
+  font-size: 0.9rem;
+}
+
+/* ---------- history ---------- */
+
+.history h3 {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+.history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.history-item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.history-item.active {
+  border-color: var(--accent);
+}
+.history-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.history-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ---------- results ---------- */
+
+.placeholder {
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.results-header h2 {
+  font-size: 1.35rem;
+}
+.company {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.bucket-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.chip-covered {
+  background: var(--covered-bg);
+  color: var(--covered);
+}
+.chip-underemphasized {
+  background: var(--under-bg);
+  color: var(--under);
+}
+.chip-transferable {
+  background: var(--transfer-bg);
+  color: var(--transfer);
+}
+.chip-gap {
+  background: var(--gap-bg);
+  color: var(--gap);
+}
+
+.section h3 {
+  font-size: 1.1rem;
+}
+.section > .muted {
+  margin: 4px 0 12px;
+  font-size: 0.9rem;
+}
+.bucket-title .count {
+  font-weight: 500;
+  color: var(--muted);
+}
+.bucket-covered {
+  color: var(--covered);
+}
+.bucket-underemphasized {
+  color: var(--under);
+}
+.bucket-transferable {
+  color: var(--transfer);
+}
+.bucket-gap {
+  color: var(--gap);
+}
+
+.match-list,
+.card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.match,
+.card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.match-satisfied {
+  opacity: 0.6;
+}
+
+.match-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.skill {
+  font-weight: 600;
+}
+
+.badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.badge-required {
+  color: var(--text);
+  border-color: var(--text);
+}
+.badge-resource {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.quote {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--quote-bg);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.rationale {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+.satisfied-note {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.jd-quote {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.jd-quote summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.jd-quote p {
+  margin: 4px 0 0;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.for-skills {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.line-before,
+.line-after {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.line-before {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+.line-after {
+  margin-top: 4px;
+  background: var(--covered-bg);
+}
+.card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.card h4 {
+  margin-top: 8px;
+  font-size: 1rem;
+}
+.card p {
+  margin: 6px 0 0;
+  font-size: 0.9rem;
+}
+.resource {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
