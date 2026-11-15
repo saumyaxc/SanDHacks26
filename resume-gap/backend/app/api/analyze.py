@@ -1,9 +1,12 @@
+import hashlib
+import json
 import logging
 import math
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.dependencies import get_llm
+from app.db.base import AnalysisRepository
+from app.dependencies import get_llm, get_repo
 from app.domain.schemas import AnalysisRequest, AnalysisResult
 from app.llm.base import LLMClient, LLMError, LLMRateLimitError
 from app.pipeline.orchestrator import run_analysis
@@ -12,12 +15,34 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Bump when prompts or pipeline logic change, so stored results aren't served as cache hits.
+_CACHE_VERSION = "1"
+
+
+def input_hash(request: AnalysisRequest) -> str:
+    """Same JD + resume (ignoring line endings and outer whitespace) -> same hash."""
+
+    def norm(text: str) -> str:
+        return text.replace("\r\n", "\n").strip()
+
+    payload = json.dumps([_CACHE_VERSION, norm(request.jd_text), norm(request.resume_text)])
+    return hashlib.sha256(payload.encode()).hexdigest()
+
 
 # Sync on purpose: the pipeline blocks on LLM calls, so FastAPI runs it in a worker thread.
 @router.post("/analyze", response_model=AnalysisResult)
-def analyze(request: AnalysisRequest, llm: LLMClient = Depends(get_llm)) -> AnalysisResult:
+def analyze(
+    request: AnalysisRequest,
+    llm: LLMClient = Depends(get_llm),
+    repo: AnalysisRepository = Depends(get_repo),
+) -> AnalysisResult:
+    key = input_hash(request)
+    if cached := repo.find_by_hash(request.session_id, key):
+        log.info("cache hit for session %s -> %s", request.session_id, cached.id)
+        return cached
+
     try:
-        return run_analysis(request, llm)
+        result = run_analysis(request, llm, known_skills=repo.known_skills(request.session_id))
     except LLMRateLimitError as e:
         log.warning("rate limited: %s", e)
         headers = {"Retry-After": str(math.ceil(e.retry_after_seconds))} if e.retry_after_seconds else None
@@ -25,3 +50,6 @@ def analyze(request: AnalysisRequest, llm: LLMClient = Depends(get_llm)) -> Anal
     except LLMError as e:
         log.exception("analysis failed")
         raise HTTPException(502, f"The AI model failed to produce a valid analysis: {e}")
+
+    repo.save(result, key)
+    return result

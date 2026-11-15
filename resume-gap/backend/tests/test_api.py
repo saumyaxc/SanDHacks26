@@ -3,7 +3,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_llm
+from app.db.memory_repo import MemoryRepository
+from app.dependencies import get_llm, get_repo
 from app.llm.base import LLMError, LLMRateLimitError
 from app.llm.fake_client import DEFAULT_RESPONSES, FakeLLMClient
 from app.main import app
@@ -25,7 +26,13 @@ class _FailingLLM(FakeLLMClient):
 
 
 @pytest.fixture
-def client():
+def repo():
+    return MemoryRepository()
+
+
+@pytest.fixture
+def client(repo):
+    app.dependency_overrides[get_repo] = lambda: repo  # fresh store per test: no cross-test cache hits
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -80,3 +87,66 @@ def test_analyze_maps_llm_failure_to_502(client):
     _use(_FailingLLM(LLMError("boom")))
     r = client.post("/api/analyze", json=_body())
     assert r.status_code == 502 and "boom" in r.json()["detail"]
+
+
+# ---------- caching + history ----------
+
+
+def test_same_input_is_served_from_cache(client):
+    llm = FakeLLMClient()
+    _use(llm)
+    first = client.post("/api/analyze", json=_body()).json()
+    calls = len(llm.calls)
+    # Different line endings / outer whitespace still hit the cache.
+    second = client.post("/api/analyze", json=_body(resume_text="\n" + _default_resume().replace("\n", "\r\n") + "  ")).json()
+    assert second["id"] == first["id"] and len(llm.calls) == calls
+
+
+def test_cache_is_per_session(client):
+    llm = FakeLLMClient()
+    _use(llm)
+    a = client.post("/api/analyze", json=_body(session_id="s1")).json()
+    b = client.post("/api/analyze", json=_body(session_id="s2")).json()
+    assert a["id"] != b["id"] and len(llm.calls) == 10
+
+
+def test_failed_analysis_is_not_stored(client, repo):
+    _use(_FailingLLM(LLMError("boom")))
+    client.post("/api/analyze", json=_body())
+    assert repo.list_for_session("s1") == []
+
+
+def test_known_skills_from_session_history_reach_the_pipeline(client, monkeypatch):
+    import app.api.analyze as analyze_module
+
+    seen: list[list[str]] = []
+    real = analyze_module.run_analysis
+
+    def spy(request, llm, known_skills=None):
+        seen.append(known_skills)
+        return real(request, llm, known_skills)
+
+    monkeypatch.setattr(analyze_module, "run_analysis", spy)
+    _use(FakeLLMClient())
+    client.post("/api/analyze", json=_body(jd_text="first JD"))
+    client.post("/api/analyze", json=_body(jd_text="second JD"))
+    client.post("/api/analyze", json=_body(session_id="other", jd_text="third JD"))
+
+    assert seen[0] == []  # fresh session
+    assert seen[1] == ["aws", "communication", "kubernetes", "postgresql", "python"]
+    assert seen[2] == []  # other sessions' history doesn't leak in
+
+
+def test_history_lists_summaries_newest_first_and_gets_by_id(client):
+    _use(FakeLLMClient())
+    old = client.post("/api/analyze", json=_body(jd_text="first JD")).json()
+    new = client.post("/api/analyze", json=_body(jd_text="second JD")).json()
+
+    rows = client.get("/api/sessions/s1/analyses").json()
+    assert [r["id"] for r in rows] == [new["id"], old["id"]]
+    assert rows[0]["role_title"] == "Backend Engineer"
+    assert rows[0]["bucket_counts"] == {"covered": 2, "underemphasized": 1, "transferable": 1, "gap": 1}
+
+    assert client.get(f"/api/analyses/{old['id']}").json()["id"] == old["id"]
+    assert client.get("/api/analyses/nope").status_code == 404
+    assert client.get("/api/sessions/nobody/analyses").json() == []

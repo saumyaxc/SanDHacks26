@@ -312,3 +312,26 @@ class AnalysisResult(_Base):
     matches: MatchResult
     rewrites: RewriteSuggestions
     recommendations: GapRecommendations
+
+
+class AnalysisSummary(_Base):
+    """One row in a session's history list; the full result is fetched by id."""
+
+    id: str
+    created_at: datetime
+    role_title: str
+    company: str | None
+    bucket_counts: dict[Bucket, int]
+
+    @classmethod
+    def from_result(cls, result: AnalysisResult) -> "AnalysisSummary":
+        counts = {b: 0 for b in Bucket}
+        for m in result.matches.matches:
+            counts[m.bucket] += 1
+        return cls(
+            id=result.id,
+            created_at=result.created_at,
+            role_title=result.requirements.role_title,
+            company=result.requirements.company,
+            bucket_counts=counts,
+        )
